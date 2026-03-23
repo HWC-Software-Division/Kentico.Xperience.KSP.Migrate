@@ -1,13 +1,17 @@
 ﻿using CMS.ContentEngine;
+using CMS.DataEngine;
 using CMS.Helpers;
 using Kentico.Xperience.Admin.Base;
 using Kentico.Xperience.KSP.Migrate.Models.API;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using Microsoft.VisualBasic.FileIO;
+using Org.BouncyCastle.Utilities;
 using System;
 using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
-
-using CMS.DataEngine;
 
 namespace Kentico.Xperience.KSP.Migrate.Controllers.API
 {
@@ -25,8 +29,7 @@ namespace Kentico.Xperience.KSP.Migrate.Controllers.API
 
                 if (model == null)
                     return BadRequest("Model is null");
-
-                //กัน duplicate ก่อน
+                 
                 var existing = DataClassInfoProvider.GetDataClassInfo(model.CodeName);
                 if (existing != null)
                 {
@@ -43,7 +46,12 @@ namespace Kentico.Xperience.KSP.Migrate.Controllers.API
                 }
 
                 //build XML form definition + mapping fields
-                var formXml = contentType.ClassFormDefinition ?? "<form>";
+                var formXml = contentType.ClassFormDefinition;
+
+                if (string.IsNullOrWhiteSpace(formXml))
+                {
+                    formXml = "<form></form>";
+                }
 
                 foreach (var f in model.Fields)
                 {
@@ -51,16 +59,23 @@ namespace Kentico.Xperience.KSP.Migrate.Controllers.API
                     if (formXml.Contains($"column=\"{f.Name}\""))
                         continue;
 
-                    var required = f.IsRequired ? "false" : "true";
-                    var sizeXml = f.Size ?? 200;
-                    var defaultXml = string.IsNullOrEmpty(f.DefaultValue) ? "" : $"<defaultvalue>{f.DefaultValue}</defaultvalue>";
+                    var allowempty = f.IsRequired ? "false" : "true";
+                    var sizeXml = (f.Size.HasValue && f.Size > 0) ? f.Size.Value : 200;
+                    var defaultXml = string.IsNullOrEmpty(f.DefaultValue) ? "" : $"<defaultvalue>{System.Security.SecurityElement.Escape(f.DefaultValue)}</defaultvalue>"; 
                     var caption = string.IsNullOrEmpty(f.Caption) ? f.Name : f.Caption;
 
                     var dropdownOptions = "";
-
                     if (f.FieldType?.ToLower() == "dropdown")
                     {
+                        if (string.IsNullOrWhiteSpace(f.DataSource))
+                            throw new Exception($"Dropdown '{f.Name}' ไม่มี DataSource");
+
                         dropdownOptions = BuildDropdownOptions(f.DataSource);
+                    }
+
+                    var imageAllowedContentTypes = "";
+                    if (f.FieldType?.ToLower() == "combinedcontentselector") {
+                        imageAllowedContentTypes = "<AllowedContentTypes>Legacy.MediaFile</AllowedContentTypes>";
                     }
 
                     //map form control
@@ -70,20 +85,22 @@ namespace Kentico.Xperience.KSP.Migrate.Controllers.API
                                 <field column=""{f.Name}""
                                        columntype=""{MapToKenticoType(f.DataType)}""
                                        columnsize=""{sizeXml}"" 
-                                       allowempty=""{required}""
+                                       allowempty=""{allowempty}""
                                        visible=""true"">
                                     <properties>
                                         <fieldcaption>{caption}</fieldcaption>  
                                         {defaultXml}
                                     </properties>
                                     <settings>
-                                        <controlname>{controlName}</controlname>
-                                        {dropdownOptions}
+                                        <controlname>{controlName}</controlname> 
+                                        {imageAllowedContentTypes}
+                                         <Options>{dropdownOptions}</Options>
+                                        <OptionsValueSeparator>;</OptionsValueSeparator>
                                     </settings>
                                 </field>";
 
                     formXml = formXml.Replace("</form>", fieldXml + "\n</form>");
-                }
+                } 
 
                 contentType.ClassFormDefinition = formXml;
 
@@ -112,49 +129,70 @@ namespace Kentico.Xperience.KSP.Migrate.Controllers.API
                 "integer" => "integer",
                 "boolean" => "boolean",
                 "guid" => "guid",
-
-                "mediafiles" => "guid",
+                //"mediafiles" => "guid",
+                "contentitemreference" => "contentitemreference",
                 _ => "text"
             };
         }
 
         private string MapFormControl(string type)
         {
+            if (string.IsNullOrEmpty(type))
+                return "Kentico.Administration.TextInput";
+
+            type = type.ToLower().Trim(); 
+
             return type?.ToLower() switch
             {
                 "textbox"  => "Kentico.Administration.TextInput",
                 "textarea" => "Kentico.Administration.TextArea",
-                "richtext" => "Kentico.Administration.RichText",
-                "dropdown" => "Kentico.Administration.DropDown",
+                "richtext" => "Kentico.Administration.RichTextEditor",
+                "dropdown" => "Kentico.Administration.DropDownSelector",
                 "checkbox" => "Kentico.Administration.CheckBox",
-                "media" => "Kentico.Administration.MediaFilesSelector",
+                //"media" => "Kentico.Administration.AssetSelector",
+                //"mediafiles" => "Kentico.Administration.AssetSelector",
+                "contentitemselector" => "Kentico.Administration.ContentItemSelector",
+                "combinedcontentselector" => "Kentico.Administration.ContentItemSelector",
+
                 _ => "Kentico.Administration.TextInput"
             };
         }
 
         private string BuildDropdownOptions(string dataSource)
-        {
+        { 
             if (string.IsNullOrWhiteSpace(dataSource))
                 return "";
 
-            var lines = dataSource.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
+            //var lines = dataSource.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
 
-            var options = "";
+            //var options = "";
 
-            foreach (var line in lines)
-            {
-                var parts = line.Split(';');
+            //foreach (var line in lines)
+            //{
+            //    var parts = line.Split(';');
 
-                if (parts.Length == 2)
-                {
-                    var value = parts[0].Trim();
-                    var text = parts[1].Trim();
+            //    if (parts.Length == 2)
+            //    {
+            //        var value = parts[0].Trim();
+            //        var text = parts[1].Trim();
 
-                    options += $"<option value=\"{value}\">{text}</option>";
-                }
-            }
+            //        options += $"<option value=\"{value}\">{text}</option>";
+            //    }
+            //}
 
-            return $"<options>{options}</options>";
+            //return $"<options>{options}</options>";
+
+            //ใช้ raw string
+            //var escaped = System.Security.SecurityElement.Escape(dataSource);
+
+            //return $"<data>{escaped}</data>";
+
+            var normalized = dataSource.Replace("\r\n", "\n")
+                                       .Replace("\r", "\n");
+
+            //var escaped = System.Security.SecurityElement.Escape(normalized);
+
+            return dataSource;
         }
 
         #endregion Content Type Migration
