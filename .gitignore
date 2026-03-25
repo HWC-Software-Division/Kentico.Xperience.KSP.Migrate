@@ -361,3 +361,5 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+/Kentico.Xperience.KSP.Migrate/assets/contentitems
+/.gitignore
