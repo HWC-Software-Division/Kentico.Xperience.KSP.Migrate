@@ -1,5 +1,8 @@
-﻿using CMS.ContentEngine;
+﻿using CMS.Base;
+using CMS.ContentEngine;
 using CMS.DataEngine;
+using CMS.DataEngine;
+using CMS.FormEngine;
 using CMS.Helpers;
 using Kentico.Xperience.Admin.Base;
 using Kentico.Xperience.KSP.Migrate.Models.API;
@@ -10,12 +13,10 @@ using Microsoft.Extensions.Options;
 using Microsoft.VisualBasic.FileIO;
 using Org.BouncyCastle.Utilities;
 using System;
-using System.Linq;
-using System.Text.Json;
-using CMS.DataEngine;
 using System.Collections.Generic;
-
+using System.Linq;
 using System.Text;
+using System.Text.Json;
 using System.Threading.Tasks;
 
 namespace Kentico.Xperience.KSP.Migrate.Controllers.API
@@ -84,12 +85,7 @@ namespace Kentico.Xperience.KSP.Migrate.Controllers.API
                             throw new Exception($"Dropdown '{f.Name}' ไม่มี DataSource");
 
                         dropdownOptions = BuildDropdownOptions(f.DataSource);
-                    }
-
-                    var imageAllowedContentTypes = "";
-                    if (f.FieldType?.ToLower() == "combinedcontentselector") {
-                        imageAllowedContentTypes = "<AllowedContentTypes>Legacy.MediaFile</AllowedContentTypes>";
-                    }
+                    } 
 
                     //map form control
                     var controlName = MapFormControl(f.FieldType);
@@ -105,10 +101,9 @@ namespace Kentico.Xperience.KSP.Migrate.Controllers.API
                                         {defaultXml}
                                     </properties>
                                     <settings>
-                                        <controlname>{controlName}</controlname> 
-                                        {imageAllowedContentTypes}
+                                        <controlname>{controlName}</controlname>                                         
                                          <Options>{dropdownOptions}</Options>
-                                        <OptionsValueSeparator>;</OptionsValueSeparator>
+                                        <OptionsValueSeparator>;</OptionsValueSeparator>                                        
                                     </settings>
                                 </field>";
 
@@ -118,8 +113,39 @@ namespace Kentico.Xperience.KSP.Migrate.Controllers.API
                 contentType.ClassFormDefinition = formXml;
 
                 //create DataClass
-                DataClassInfoProvider.SetDataClassInfo(contentType); 
+                DataClassInfoProvider.SetDataClassInfo(contentType);
 
+                // STEP 2: update AllowedContentTypes via FormInfo
+                var classInfo = DataClassInfoProvider.GetDataClassInfo(model.CodeName);
+                var formDefinition = new FormInfo(classInfo.ClassFormDefinition);
+
+                foreach (var f in model.Fields)
+                {
+                    if (f.FieldType?.ToLower() == "contentitemselector")
+                    {
+                        var field = formDefinition.GetFormField(f.Name);
+
+                        if (field != null)
+                        {
+                            //field.Settings["allowedContentTypes"] = "Legacy.MediaFile";
+                            //field.Settings["AllowedContentItemTypeIdentifiers"] = "Legacy.MediaFile";
+                            var legacyMediaContentType = DataClassInfoProvider.GetDataClassInfo("Legacy.MediaFile");
+                            var legacyMediaGuid = legacyMediaContentType.ClassGUID.ToString();
+
+                            if (legacyMediaContentType != null)
+                            {
+                                var guid = legacyMediaContentType.ClassGUID.ToString();
+
+                                field.Settings["AllowedContentItemTypeIdentifiers"] = $"[\"{guid}\"]";
+                            }
+                        }
+                    }
+                }
+
+                // save back
+                classInfo.ClassFormDefinition = formDefinition.GetXmlDefinition();
+                DataClassInfoProvider.SetDataClassInfo(classInfo);
+                 
                 return Ok(new
                 {
                     message = "ContentType created",
