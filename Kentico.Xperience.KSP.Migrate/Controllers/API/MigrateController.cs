@@ -14,6 +14,7 @@ using Microsoft.VisualBasic.FileIO;
 using Org.BouncyCastle.Utilities;
 using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
@@ -40,6 +41,7 @@ namespace Kentico.Xperience.KSP.Migrate.Controllers.API
             try
             {
                 DataClassInfo contentType;
+                var formXmlChanged = false;
 
                 if (model == null)
                     return BadRequest("Model is null");
@@ -61,6 +63,8 @@ namespace Kentico.Xperience.KSP.Migrate.Controllers.API
 
                 //build XML form definition + mapping fields
                 var formXml = contentType.ClassFormDefinition;
+                var formDefinition = new FormInfo(contentType.ClassFormDefinition);
+
 
                 if (string.IsNullOrWhiteSpace(formXml))
                 {
@@ -69,33 +73,40 @@ namespace Kentico.Xperience.KSP.Migrate.Controllers.API
 
                 foreach (var f in model.Fields)
                 {
-                    //กัน field ซ้ำ
-                    if (formXml.Contains($"column=\"{f.Name}\""))
-                        continue;
+                    ////กัน field ซ้ำ
+                    //if (formXml.Contains($"column=\"{f.Name}\""))
+                    //    continue;
+
+                    var field = formDefinition.GetFormField(f.Name);
 
                     var allowempty = f.IsRequired ? "false" : "true";
                     var sizeXml = (f.Size.HasValue && f.Size > 0) ? f.Size.Value : 200;
-                    var defaultXml = string.IsNullOrEmpty(f.DefaultValue) ? "" : $"<defaultvalue>{System.Security.SecurityElement.Escape(f.DefaultValue)}</defaultvalue>"; 
+                    var defaultXml = string.IsNullOrEmpty(f.DefaultValue) ? "" : $"<defaultvalue>{System.Security.SecurityElement.Escape(f.DefaultValue)}</defaultvalue>";
                     var caption = string.IsNullOrEmpty(f.Caption) ? f.Name : f.Caption;
 
                     var dropdownOptions = "";
                     if (f.FieldType?.ToLower() == "dropdown")
                     {
                         if (string.IsNullOrWhiteSpace(f.DataSource))
-                            throw new Exception($"Dropdown '{f.Name}' ไม่มี DataSource");
+                            //throw new Exception($"Dropdown '{f.Name}' ไม่มี DataSource");
+                            dropdownOptions = "";
 
                         dropdownOptions = BuildDropdownOptions(f.DataSource);
-                    } 
+                    }
 
                     //map form control
                     var controlName = MapFormControl(f.FieldType);
 
-                    var fieldXml = $@"
+                    if (field == null)
+                    {
+                        //CREATE NEW
+                        var fieldXml = $@"
                                 <field column=""{f.Name}""
                                        columntype=""{MapToKenticoType(f.DataType)}""
                                        columnsize=""{sizeXml}"" 
                                        allowempty=""{allowempty}""
-                                       visible=""true"">
+                                       visible=""true""
+                                       enabled=""true"">
                                     <properties>
                                         <fieldcaption>{caption}</fieldcaption>  
                                         {defaultXml}
@@ -107,17 +118,46 @@ namespace Kentico.Xperience.KSP.Migrate.Controllers.API
                                     </settings>
                                 </field>";
 
-                    formXml = formXml.Replace("</form>", fieldXml + "\n</form>");
-                } 
+                        formXml = formXml.Replace("</form>", fieldXml + "\n</form>");
+                    }
+                    else 
+                    {
+                        //UPDATE
+                        field.Caption = caption;
+                        field.AllowEmpty = (allowempty == "false")  ? false : true;
+                        field.Size = sizeXml;
 
-                contentType.ClassFormDefinition = formXml;
+                        if (!string.IsNullOrEmpty(f.DefaultValue))
+                        {
+                            field.DefaultValue = f.DefaultValue;
+                        }
+
+                        field.Settings["controlname"] = controlName;
+
+                        if (f.FieldType?.ToLower() == "dropdown")
+                        {
+                            field.Settings["Options"] = dropdownOptions;
+                            field.Settings["OptionsValueSeparator"] = ";";
+                        }
+                        formXmlChanged = true;
+                    } 
+                }  
+                
+                if (!formXmlChanged)
+                {
+                    contentType.ClassFormDefinition = formXml;
+                }
+                else
+                {
+                    contentType.ClassFormDefinition = formDefinition.GetXmlDefinition();
+                }
 
                 //create DataClass
                 DataClassInfoProvider.SetDataClassInfo(contentType);
 
                 // STEP 2: update AllowedContentTypes via FormInfo
                 var classInfo = DataClassInfoProvider.GetDataClassInfo(model.CodeName);
-                var formDefinition = new FormInfo(classInfo.ClassFormDefinition);
+                formDefinition = new FormInfo(classInfo.ClassFormDefinition);
 
                 foreach (var f in model.Fields)
                 {
@@ -200,37 +240,10 @@ namespace Kentico.Xperience.KSP.Migrate.Controllers.API
         private string BuildDropdownOptions(string dataSource)
         { 
             if (string.IsNullOrWhiteSpace(dataSource))
-                return "";
-
-            //var lines = dataSource.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
-
-            //var options = "";
-
-            //foreach (var line in lines)
-            //{
-            //    var parts = line.Split(';');
-
-            //    if (parts.Length == 2)
-            //    {
-            //        var value = parts[0].Trim();
-            //        var text = parts[1].Trim();
-
-            //        options += $"<option value=\"{value}\">{text}</option>";
-            //    }
-            //}
-
-            //return $"<options>{options}</options>";
-
-            //ใช้ raw string
-            //var escaped = System.Security.SecurityElement.Escape(dataSource);
-
-            //return $"<data>{escaped}</data>";
-
-            var normalized = dataSource.Replace("\r\n", "\n")
-                                       .Replace("\r", "\n");
-
+                return ""; 
+            //var normalized = dataSource.Replace("\r\n", "\n")
+            //                           .Replace("\r", "\n");
             //var escaped = System.Security.SecurityElement.Escape(normalized);
-
             return dataSource;
         }
 
