@@ -2,12 +2,13 @@
 using CMS.Helpers;
 using Kentico.Xperience.Admin.Base;
 using Kentico.Xperience.KSP.Migrate.Models.API;
+using Kentico.Xperience.KSP.Migrate.Services;
 using Microsoft.AspNetCore.Mvc;
 using System;
 using System.Linq;
-using System.Threading.Tasks;
-
+using System.Text.Json;
 using CMS.DataEngine;
+using System.Collections.Generic;
 
 namespace Kentico.Xperience.KSP.Migrate.Controllers.API
 {
@@ -15,7 +16,13 @@ namespace Kentico.Xperience.KSP.Migrate.Controllers.API
     [Route("api/migrate")]
     public class MigrateController : ControllerBase
     {
-        #region Content Type Migration
+        private readonly ILocalStringMigrationService localStringMigrationService;
+
+        public MigrateController(ILocalStringMigrationService localStringMigrationService)
+        {
+            this.localStringMigrationService = localStringMigrationService;
+        }
+
         [HttpPost("content-type")]
         public IActionResult CreateContentType([FromBody] ContentTypeDto model)
         {
@@ -26,7 +33,6 @@ namespace Kentico.Xperience.KSP.Migrate.Controllers.API
                 if (model == null)
                     return BadRequest("Model is null");
 
-                //กัน duplicate ก่อน
                 var existing = DataClassInfoProvider.GetDataClassInfo(model.CodeName);
                 if (existing != null)
                 {
@@ -42,12 +48,10 @@ namespace Kentico.Xperience.KSP.Migrate.Controllers.API
                     };
                 }
 
-                //build XML form definition + mapping fields
                 var formXml = contentType.ClassFormDefinition ?? "<form>";
 
                 foreach (var f in model.Fields)
                 {
-                    //กัน field ซ้ำ
                     if (formXml.Contains($"column=\"{f.Name}\""))
                         continue;
 
@@ -63,7 +67,6 @@ namespace Kentico.Xperience.KSP.Migrate.Controllers.API
                         dropdownOptions = BuildDropdownOptions(f.DataSource);
                     }
 
-                    //map form control
                     var controlName = MapFormControl(f.FieldType);
 
                     var fieldXml = $@"
@@ -87,8 +90,7 @@ namespace Kentico.Xperience.KSP.Migrate.Controllers.API
 
                 contentType.ClassFormDefinition = formXml;
 
-                //create DataClass
-                DataClassInfoProvider.SetDataClassInfo(contentType); 
+                DataClassInfoProvider.SetDataClassInfo(contentType);
 
                 return Ok(new
                 {
@@ -96,6 +98,51 @@ namespace Kentico.Xperience.KSP.Migrate.Controllers.API
                     model.CodeName,
                     fields = model.Fields.Count
                 });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        [HttpPost("local-string")]
+        public IActionResult ImportLocalString([FromBody] JsonElement body)
+        {
+            try
+            {
+                var options = new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                };
+
+                List<LocalStringImportDto> models;
+
+                if (body.ValueKind == JsonValueKind.Array)
+                {
+                    models = JsonSerializer.Deserialize<List<LocalStringImportDto>>(body.GetRawText(), options)
+                             ?? new List<LocalStringImportDto>();
+                }
+                else if (body.ValueKind == JsonValueKind.Object)
+                {
+                    var single = JsonSerializer.Deserialize<LocalStringImportDto>(body.GetRawText(), options);
+
+                    models = single == null
+                        ? new List<LocalStringImportDto>()
+                        : new List<LocalStringImportDto> { single };
+                }
+                else
+                {
+                    return BadRequest("Request body must be a JSON object or JSON array.");
+                }
+
+                if (!models.Any())
+                {
+                    return BadRequest("No local strings found in request body.");
+                }
+
+                var result = localStringMigrationService.ImportMany(models);
+
+                return Ok(result);
             }
             catch (Exception ex)
             {
@@ -112,7 +159,6 @@ namespace Kentico.Xperience.KSP.Migrate.Controllers.API
                 "integer" => "integer",
                 "boolean" => "boolean",
                 "guid" => "guid",
-
                 "mediafiles" => "guid",
                 _ => "text"
             };
@@ -122,7 +168,7 @@ namespace Kentico.Xperience.KSP.Migrate.Controllers.API
         {
             return type?.ToLower() switch
             {
-                "textbox"  => "Kentico.Administration.TextInput",
+                "textbox" => "Kentico.Administration.TextInput",
                 "textarea" => "Kentico.Administration.TextArea",
                 "richtext" => "Kentico.Administration.RichText",
                 "dropdown" => "Kentico.Administration.DropDown",
@@ -156,7 +202,5 @@ namespace Kentico.Xperience.KSP.Migrate.Controllers.API
 
             return $"<options>{options}</options>";
         }
-
-        #endregion Content Type Migration
     }
 }

@@ -2,6 +2,7 @@
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
+using Kentico.Xperience.KSP.Migrate.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -17,6 +18,9 @@ builder.Services.AddKentico(features =>
 });
 
 builder.Services.AddAuthentication();
+builder.Services.AddXperienceCommunityLocalization();
+
+builder.Services.AddScoped<ILocalStringMigrationService, LocalStringMigrationService>();
 // builder.Services.AddAuthorization();
 
 builder.Services.AddControllersWithViews();
