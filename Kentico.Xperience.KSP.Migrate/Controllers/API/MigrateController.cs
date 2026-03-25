@@ -31,6 +31,8 @@ namespace Kentico.Xperience.KSP.Migrate.Controllers.API
             this.localStringMigrationService = localStringMigrationService;
         }
 
+        #region ContentType Migration
+
         [HttpPost("content-type")]
         public IActionResult CreateContentType([FromBody] ContentTypeDto model)
         {
@@ -131,51 +133,6 @@ namespace Kentico.Xperience.KSP.Migrate.Controllers.API
             }
         }
 
-        [HttpPost("local-string")]
-        public IActionResult ImportLocalString([FromBody] JsonElement body)
-        {
-            try
-            {
-                var options = new JsonSerializerOptions
-                {
-                    PropertyNameCaseInsensitive = true
-                };
-
-                List<LocalStringImportDto> models;
-
-                if (body.ValueKind == JsonValueKind.Array)
-                {
-                    models = JsonSerializer.Deserialize<List<LocalStringImportDto>>(body.GetRawText(), options)
-                             ?? new List<LocalStringImportDto>();
-                }
-                else if (body.ValueKind == JsonValueKind.Object)
-                {
-                    var single = JsonSerializer.Deserialize<LocalStringImportDto>(body.GetRawText(), options);
-
-                    models = single == null
-                        ? new List<LocalStringImportDto>()
-                        : new List<LocalStringImportDto> { single };
-                }
-                else
-                {
-                    return BadRequest("Request body must be a JSON object or JSON array.");
-                }
-
-                if (!models.Any())
-                {
-                    return BadRequest("No local strings found in request body.");
-                }
-
-                var result = localStringMigrationService.ImportMany(models);
-
-                return Ok(result);
-            }
-            catch (Exception ex)
-            {
-                return BadRequest(ex.Message);
-            }
-        }
-
         private string MapToKenticoType(string type)
         {
             return type switch
@@ -251,6 +208,55 @@ namespace Kentico.Xperience.KSP.Migrate.Controllers.API
             return dataSource;
         }
 
-        #endregion Content Type Migration
+        #endregion ContentType Migration
+
+        #region LocalString Migration
+
+        [HttpPost("local-string")]
+        public IActionResult ImportLocalString([FromBody] JsonElement body)
+        {
+            try
+            {
+                var options = new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                };
+
+                List<LocalStringImportDto> models;
+
+                if (body.ValueKind == JsonValueKind.Array)
+                {
+                    models = JsonSerializer.Deserialize<List<LocalStringImportDto>>(body.GetRawText(), options)
+                             ?? new List<LocalStringImportDto>();
+                }
+                else if (body.ValueKind == JsonValueKind.Object)
+                {
+                    var single = JsonSerializer.Deserialize<LocalStringImportDto>(body.GetRawText(), options);
+
+                    models = single == null
+                        ? new List<LocalStringImportDto>()
+                        : new List<LocalStringImportDto> { single };
+                }
+                else
+                {
+                    return BadRequest("Request body must be a JSON object or JSON array.");
+                }
+
+                if (!models.Any())
+                {
+                    return BadRequest("No local strings found in request body.");
+                }
+
+                var result = localStringMigrationService.ImportMany(models);
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        #endregion LocalString Migration
     }
 }
