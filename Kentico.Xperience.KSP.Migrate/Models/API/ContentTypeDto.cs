@@ -21,6 +21,9 @@ namespace Kentico.Xperience.KSP.Migrate.Models.API
         public string Caption { get; set; }
 
         public string DataSource { get; set; }
+        public int? MinItems { get; set; }
+        public int? MaxItems { get; set; }
 
+        public List<string> AllowedContentTypes { get; set; } 
     }
 }

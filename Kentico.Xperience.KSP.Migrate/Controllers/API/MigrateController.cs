@@ -7,6 +7,7 @@ using CMS.Helpers;
 using Kentico.Xperience.Admin.Base;
 using Kentico.Xperience.KSP.Migrate.Models.API;
 using Kentico.Xperience.KSP.Migrate.Services;
+using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -42,6 +43,7 @@ namespace Kentico.Xperience.KSP.Migrate.Controllers.API
             {
                 DataClassInfo contentType;
                 var formXmlChanged = false;
+                var msg = "";
 
                 if (model == null)
                     return BadRequest("Model is null");
@@ -65,7 +67,6 @@ namespace Kentico.Xperience.KSP.Migrate.Controllers.API
                 var formXml = contentType.ClassFormDefinition;
                 var formDefinition = new FormInfo(contentType.ClassFormDefinition);
 
-
                 if (string.IsNullOrWhiteSpace(formXml))
                 {
                     formXml = "<form></form>";
@@ -83,6 +84,8 @@ namespace Kentico.Xperience.KSP.Migrate.Controllers.API
                     var sizeXml = (f.Size.HasValue && f.Size > 0) ? f.Size.Value : 200;
                     var defaultXml = string.IsNullOrEmpty(f.DefaultValue) ? "" : $"<defaultvalue>{System.Security.SecurityElement.Escape(f.DefaultValue)}</defaultvalue>";
                     var caption = string.IsNullOrEmpty(f.Caption) ? f.Name : f.Caption;
+                    var minItems = (f.MinItems.HasValue && f.MinItems > 0) ? f.MinItems.Value : 1;
+                    var maxItems = (f.MaxItems.HasValue && f.MaxItems > 0) ? f.MaxItems.Value : 1;
 
                     var dropdownOptions = "";
                     if (f.FieldType?.ToLower() == "dropdown")
@@ -96,13 +99,13 @@ namespace Kentico.Xperience.KSP.Migrate.Controllers.API
 
                     //map form control
                     var controlName = MapFormControl(f.FieldType);
-
+                    
                     if (field == null)
                     {
                         //CREATE NEW
                         var fieldXml = $@"
                                 <field column=""{f.Name}""
-                                       columntype=""{MapToKenticoType(f.DataType)}""
+                                       columntype=""{MapToKenticoType(f.DataType, f.FieldType)}""
                                        columnsize=""{sizeXml}"" 
                                        allowempty=""{allowempty}""
                                        visible=""true""
@@ -119,6 +122,8 @@ namespace Kentico.Xperience.KSP.Migrate.Controllers.API
                                 </field>";
 
                         formXml = formXml.Replace("</form>", fieldXml + "\n</form>");
+
+                        msg = "ContentType created";
                     }
                     else 
                     {
@@ -139,7 +144,9 @@ namespace Kentico.Xperience.KSP.Migrate.Controllers.API
                             field.Settings["Options"] = dropdownOptions;
                             field.Settings["OptionsValueSeparator"] = ";";
                         }
+
                         formXmlChanged = true;
+                        msg = "ContentType updated";
                     } 
                 }  
                 
@@ -161,14 +168,13 @@ namespace Kentico.Xperience.KSP.Migrate.Controllers.API
 
                 foreach (var f in model.Fields)
                 {
+                    //For ContentItemSelector  : all Image , Media, ImageBanner etc.
                     if (f.FieldType?.ToLower() == "contentitemselector")
                     {
                         var field = formDefinition.GetFormField(f.Name);
 
                         if (field != null)
                         {
-                            //field.Settings["allowedContentTypes"] = "Legacy.MediaFile";
-                            //field.Settings["AllowedContentItemTypeIdentifiers"] = "Legacy.MediaFile";
                             var legacyMediaContentType = DataClassInfoProvider.GetDataClassInfo("Legacy.MediaFile");
                             var legacyMediaGuid = legacyMediaContentType.ClassGUID.ToString();
 
@@ -180,6 +186,18 @@ namespace Kentico.Xperience.KSP.Migrate.Controllers.API
                             }
                         }
                     }
+
+                    //For PageSelector  : all Navigation , Internal link etc.
+                    if (f.FieldType?.ToLower() == "pageselector")
+                    {
+                        var field = formDefinition.GetFormField(f.Name);
+
+                        if (field != null)
+                        {
+                            field.Settings["MinimumPages"] = (f.MinItems ?? 1).ToString();
+                            field.Settings["MaximumPages"] = (f.MaxItems ?? 1).ToString();                            
+                        }
+                    }
                 }
 
                 // save back
@@ -188,7 +206,7 @@ namespace Kentico.Xperience.KSP.Migrate.Controllers.API
                  
                 return Ok(new
                 {
-                    message = "ContentType created",
+                    message = msg,
                     model.CodeName,
                     fields = model.Fields.Count
                 });
@@ -199,16 +217,21 @@ namespace Kentico.Xperience.KSP.Migrate.Controllers.API
             }
         }
 
-        private string MapToKenticoType(string type)
+        private string MapToKenticoType(string type, string fieldType = null)
         {
+            type = type?.ToLower();
+            fieldType = fieldType?.ToLower();
+
+            if (fieldType == "pageselector" || type == "page")
+                return "webpages";
+
             return type switch
             {
                 "text" => "text",
                 "longtext" => "richtext",
                 "integer" => "integer",
                 "boolean" => "boolean",
-                "guid" => "guid",
-                //"mediafiles" => "guid",
+                "guid" => "guid", 
                 "contentitemreference" => "contentitemreference",
                 _ => "text"
             };
@@ -228,10 +251,14 @@ namespace Kentico.Xperience.KSP.Migrate.Controllers.API
                 "richtext" => "Kentico.Administration.RichTextEditor",
                 "dropdown" => "Kentico.Administration.DropDownSelector",
                 "checkbox" => "Kentico.Administration.CheckBox",
+
                 //"media" => "Kentico.Administration.AssetSelector",
                 //"mediafiles" => "Kentico.Administration.AssetSelector",
                 "contentitemselector" => "Kentico.Administration.ContentItemSelector",
                 "combinedcontentselector" => "Kentico.Administration.ContentItemSelector",
+
+                "pageselector" => "Kentico.Administration.WebPageSelector",
+                "pages" => "Kentico.Administration.WebPageSelector",
 
                 _ => "Kentico.Administration.TextInput"
             };
