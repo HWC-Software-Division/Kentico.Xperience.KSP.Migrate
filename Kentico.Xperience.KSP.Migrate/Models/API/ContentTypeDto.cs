@@ -24,6 +24,16 @@ namespace Kentico.Xperience.KSP.Migrate.Models.API
         public int? MinItems { get; set; }
         public int? MaxItems { get; set; }
 
-        public List<string> AllowedContentTypes { get; set; } 
+        public List<string> AllowedContentTypes { get; set; }
+        public bool Visible { get; set; }
+        public VisibilityConditionDto Visibility { get; set; }
+    }
+
+    public class VisibilityConditionDto
+    {
+        public string Field { get; set; }
+        public string Operator { get; set; }
+        public string Value { get; set; }
+        public bool CaseSensitive { get; set; }
     }
 }

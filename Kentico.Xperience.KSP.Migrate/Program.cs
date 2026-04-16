@@ -25,6 +25,9 @@ builder.Services.AddScoped<ILocalStringMigrationService, LocalStringMigrationSer
 
 builder.Services.AddControllersWithViews();
 
+builder.Services.AddScoped<ContentTypeImportService>();
+builder.Services.AddScoped<ContentTypeExportService>();
+
 var app = builder.Build();
 app.InitKentico();
 
