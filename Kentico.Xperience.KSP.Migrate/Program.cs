@@ -1,45 +1,32 @@
-﻿using Kentico.Web.Mvc;
-
-using Microsoft.AspNetCore.Builder;
-using Microsoft.Extensions.DependencyInjection;
+using ContentTypeTransfer;
+using Kentico.Web.Mvc;
 using Kentico.Xperience.KSP.Migrate.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Services.AddContentTypeTransfer(builder.Configuration);
 
-// Enable desired Kentico Xperience features
 builder.Services.AddKentico(features =>
 {
     // features.UsePageBuilder();
-    // features.UseActivityTracking();
-    // features.UseWebPageRouting();
-    // features.UseEmailStatisticsLogging();
-    // features.UseEmailMarketing();
 });
 
 builder.Services.AddAuthentication();
 builder.Services.AddXperienceCommunityLocalization();
-
 builder.Services.AddScoped<ILocalStringMigrationService, LocalStringMigrationService>();
-// builder.Services.AddAuthorization();
-
 builder.Services.AddControllersWithViews();
 
 var app = builder.Build();
-app.InitKentico();
+
+// ✅ Force load ContentTypeTransfer assembly ก่อน InitKentico scan attributes
+_ = typeof(ContentTypeTransfer.ContentTypeTransferModule);
+
+app.InitKentico();  // ← XbyK scan assembly attributes ตรงนี้
 
 app.UseStaticFiles();
-
 app.UseCookiePolicy();
-
 app.UseAuthentication();
-
-
 app.UseKentico();
-
-// app.UseAuthorization();
-
 app.Kentico().MapRoutes();
-app.MapGet("/", () => "The Kentico.Xperience.KSP.Migrate site has not been configured yet.");
-
+app.MapControllers();
 app.Run();
