@@ -19,7 +19,6 @@ namespace Kentico.Xperience.KSP.Migrate.Services
                     throw new Exception("Model is null");
 
                 DataClassInfo contentType;
-                var formXmlChanged = false;
                 var msg = "";
 
                 var existing = DataClassInfoProvider.GetDataClassInfo(model.CodeName);
@@ -45,26 +44,17 @@ namespace Kentico.Xperience.KSP.Migrate.Services
                 //                : contentType.ClassFormDefinition;
 
                 var formXml = contentType.ClassFormDefinition;
+                string pkXml = "";
 
                 if (string.IsNullOrWhiteSpace(formXml))
                 {
-                    //CREATE ใหม่ ต้องมี Primary Key
-                    //formXml = @"
-                    //    <form>
-                    //        <field column=""ContentItemDataID""
-                    //               columntype=""integer""
-                    //               ispk=""true""
-                    //               identity=""true""
-                    //               allowempty=""false""
-                    //               visible=""false"" />
-                    //    </form>";
+                    //เก็บ PK เป็น raw string แยกไว้ก่อน
+                    pkXml = @"
+                             <field column=""ContentItemDataID"" columntype=""integer"" enabled=""true"" isPK=""true"" />
+                             <field column=""ContentItemDataCommonDataID"" columntype=""integer"" enabled=""true"" refobjtype=""cms.contentitemcommondata"" reftype=""Required"" system=""true"" />
+                             <field column=""ContentItemDataGUID"" columntype=""guid"" enabled=""true"" isunique=""true"" system=""true"" />";
 
-                    formXml = @"
-                            <form>
-                                <field column=""ContentItemDataID"" columntype=""integer"" ispk=""true"" enabled=""true"" />
-                                <field column=""ContentItemDataCommonDataID"" columntype=""integer"" system=""true"" />
-                                <field column=""ContentItemDataGUID"" columntype=""guid"" system=""true"" isunique=""true"" />
-                            </form>";
+                    formXml = "<form></form>";
                 }
 
                 var formDefinition = new FormInfo(formXml);
@@ -132,26 +122,67 @@ namespace Kentico.Xperience.KSP.Migrate.Services
                         if (field == null)
                         {
                             //Create
-                            var fieldXml = $@"
-                                    <field column=""{f.Name}""
-                                           columntype=""{MapToKenticoType(f.DataType, f.FieldType)}""
-                                           columnsize=""{sizeXml}""
-                                           allowempty=""{allowempty}""
-                                           visible=""{visible}"">
-                                        <properties>
-                                            <fieldcaption>{caption}</fieldcaption>
-                                            {defaultXml}
-                                        </properties>
-                                        <settings>
-                                            <controlname>{controlName}</controlname>
-                                            {allowedTypesXml}
-                                            {dropdownOptions}
-                                            {minMaxXml}
-                                        </settings>
-                                        {visibilityXml}
-                                    </field>";
+                            //var fieldXml = $@"
+                            //        <field column=""{f.Name}""
+                            //               columntype=""{MapToKenticoType(f.DataType, f.FieldType)}""
+                            //               columnsize=""{sizeXml}""
+                            //               allowempty=""{allowempty}""
+                            //               visible=""{visible}"">
+                            //            <properties>
+                            //                <fieldcaption>{caption}</fieldcaption>
+                            //                {defaultXml}
+                            //            </properties>
+                            //            <settings>
+                            //                <controlname>{controlName}</controlname>
+                            //                {allowedTypesXml}
+                            //                {dropdownOptions}
+                            //                {minMaxXml}
+                            //            </settings>
+                            //            {visibilityXml}
+                            //        </field>";
 
-                            formXml = formXml.Replace("</form>", fieldXml + "\n</form>");
+                            //formXml = formXml.Replace("</form>", fieldXml + "\n</form>");
+                            var newField = new FormFieldInfo
+                            {
+                                Name = f.Name,
+                                DataType = MapToKenticoType(f.DataType, f.FieldType),
+                                Size = sizeXml,
+                                AllowEmpty = allowempty == "true",
+                                Visible = visible,
+                                Caption = caption,
+                            };
+
+                            if (!string.IsNullOrEmpty(f.DefaultValue))
+                                newField.DefaultValue = f.DefaultValue;
+
+                            newField.Settings["controlname"] = controlName;
+
+                            if (!string.IsNullOrEmpty(dropdownOptions))
+                                newField.Settings["Options"] = f.DataSource;
+
+                            if (!string.IsNullOrEmpty(allowedTypesXml))
+                                newField.Settings["AllowedContentItemTypeIdentifiers"] =
+                                    System.Text.Json.JsonSerializer.Serialize(
+                                        f.AllowedContentTypes
+                                            .Select(cn => DataClassInfoProvider.GetDataClassInfo(cn))
+                                            .Where(ci => ci != null)
+                                            .Select(ci => ci.ClassGUID.ToString())
+                                            .ToList()
+                                    );
+
+                            if (f.MinItems.HasValue)
+                                newField.Settings["minitems"] = f.MinItems.Value.ToString();
+
+                            if (f.MaxItems.HasValue)
+                                newField.Settings["maxitems"] = f.MaxItems.Value.ToString();
+
+                            //ใช้ FormInfo API แทน string.Replace
+                            formDefinition.AddFormItem(newField);
+
+                            // Apply visibility ด้วย
+                            if (f.Visibility != null)
+                                formDefinition = ApplyVisibility(formDefinition, f.Name, f.Visibility);
+                            
                             msg = "Created";
                         }
                         else
@@ -204,8 +235,7 @@ namespace Kentico.Xperience.KSP.Migrate.Services
                             {
                                 field.Settings["maxitems"] = f.MaxItems.Value.ToString();
                             }
-
-                            formXmlChanged = true;
+                             
                             msg = "Updated";
 
                             formDefinition = ApplyVisibility(formDefinition, f.Name, f.Visibility);
@@ -219,10 +249,38 @@ namespace Kentico.Xperience.KSP.Migrate.Services
 
                 }
 
-                contentType.ClassFormDefinition = formXmlChanged
-                    ? formDefinition.GetXmlDefinition()
-                    : formXml;
+                //contentType.ClassFormDefinition = formXmlChanged
+                //    ? formDefinition.GetXmlDefinition()
+                //    : formXml;
 
+                var userFieldsXml = formDefinition.GetXmlDefinition();
+                string finalXml;
+
+                if (!string.IsNullOrEmpty(pkXml))
+                {
+                    // inject PK เข้าไปเป็น first children ของ <form>
+                    var doc = new XmlDocument();
+                    doc.LoadXml(userFieldsXml);
+
+                    var formNode = doc.SelectSingleNode("//form");
+                    var pkFragment = doc.CreateDocumentFragment();
+                    pkFragment.InnerXml = pkXml;
+
+                    if (formNode.FirstChild != null)
+                        formNode.InsertBefore(pkFragment, formNode.FirstChild);
+                    else
+                        formNode.AppendChild(pkFragment);
+
+                    finalXml = doc.OuterXml;
+                }
+                else
+                {
+                    finalXml = userFieldsXml;
+                }
+
+                LogDebug($"[DEBUG] {model.CodeName} - ClassFormDefinition:\n{finalXml}");
+
+                contentType.ClassFormDefinition = finalXml;
                 DataClassInfoProvider.SetDataClassInfo(contentType);
 
                 return (msg, model.CodeName, model.Fields.Count);
@@ -241,7 +299,7 @@ namespace Kentico.Xperience.KSP.Migrate.Services
             return type?.ToLower() switch
             {
                 "text" => "text",
-                "longtext" => "richtext",
+                "longtext" => "longtext",
                 "integer" => "integer",
                 "boolean" => "boolean",
                 "datetime" => "datetime",
@@ -347,7 +405,11 @@ namespace Kentico.Xperience.KSP.Migrate.Services
             if (fieldNode == null) return formDefinition;
 
             var oldNode = fieldNode.SelectSingleNode("visibilityconditiondata");
-            oldNode?.ParentNode.RemoveChild(oldNode);
+            //oldNode?.ParentNode.RemoveChild(oldNode);
+            if (oldNode != null && oldNode.ParentNode != null)
+            {
+                oldNode.ParentNode.RemoveChild(oldNode);
+            }
 
             var xml = BuildVisibilityXml(visibility);
 
@@ -375,6 +437,14 @@ ERROR: {ex.Message}
 STACK: {ex.StackTrace}
 --------------------------";
 
+            System.IO.File.AppendAllText(fileName, log);
+        }
+
+        private void LogDebug(string message)
+        {
+            var date = DateTime.Now.ToString("yyyyMMdd");
+            var fileName = $"logs/import-debug-{date}.txt";
+            var log = $"[{DateTime.Now}]\n{message}\n--------------------------\n";
             System.IO.File.AppendAllText(fileName, log);
         }
     }
