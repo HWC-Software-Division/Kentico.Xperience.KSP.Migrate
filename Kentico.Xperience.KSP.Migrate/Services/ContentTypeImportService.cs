@@ -70,21 +70,7 @@ namespace Kentico.Xperience.KSP.Migrate.Services
                         var sizeXml = (f.Size.HasValue && f.Size > 0) ? f.Size.Value : 200;
                         var caption = string.IsNullOrEmpty(f.Caption) ? f.Name : f.Caption;
                         var defaultXml = string.IsNullOrEmpty(f.DefaultValue) ? "" : $"<defaultvalue>{System.Security.SecurityElement.Escape(f.DefaultValue)}</defaultvalue>";
-
-                        //var minItems = (f.MinItems.HasValue && f.MinItems > 0) ? f.MinItems.Value : 1;
-                        //var maxItems = (f.MaxItems.HasValue && f.MaxItems > 0) ? f.MaxItems.Value : 1;
-
-                        var minMaxXml = "";
-                        if (f.MinItems.HasValue)
-                        {
-                            minMaxXml += $"<minitems>{f.MinItems.Value}</minitems>";
-                        }
-
-                        if (f.MaxItems.HasValue)
-                        {
-                            minMaxXml += $"<maxitems>{f.MaxItems.Value}</maxitems>";
-                        }
-
+                          
                         var dropdownOptions = "";
                         if (f.FieldType?.ToLower() == "dropdown")
                         {
@@ -121,27 +107,7 @@ namespace Kentico.Xperience.KSP.Migrate.Services
 
                         if (field == null)
                         {
-                            //Create
-                            //var fieldXml = $@"
-                            //        <field column=""{f.Name}""
-                            //               columntype=""{MapToKenticoType(f.DataType, f.FieldType)}""
-                            //               columnsize=""{sizeXml}""
-                            //               allowempty=""{allowempty}""
-                            //               visible=""{visible}"">
-                            //            <properties>
-                            //                <fieldcaption>{caption}</fieldcaption>
-                            //                {defaultXml}
-                            //            </properties>
-                            //            <settings>
-                            //                <controlname>{controlName}</controlname>
-                            //                {allowedTypesXml}
-                            //                {dropdownOptions}
-                            //                {minMaxXml}
-                            //            </settings>
-                            //            {visibilityXml}
-                            //        </field>";
-
-                            //formXml = formXml.Replace("</form>", fieldXml + "\n</form>");
+                            //Create                            
                             var newField = new FormFieldInfo
                             {
                                 Name = f.Name,
@@ -170,11 +136,14 @@ namespace Kentico.Xperience.KSP.Migrate.Services
                                             .ToList()
                                     );
 
-                            if (f.MinItems.HasValue)
-                                newField.Settings["minitems"] = f.MinItems.Value.ToString();
+                            //if (f.MinItems.HasValue)
+                            //    newField.Settings["minitems"] = f.MinItems.Value.ToString();
 
-                            if (f.MaxItems.HasValue)
-                                newField.Settings["maxitems"] = f.MaxItems.Value.ToString();
+                            //if (f.MaxItems.HasValue)
+                            //    newField.Settings["maxitems"] = f.MaxItems.Value.ToString();
+
+                            //Define Min max settings ตาม FieldType
+                            ApplyMinMaxSettings(newField, f); 
 
                             //ใช้ FormInfo API แทน string.Replace
                             formDefinition.AddFormItem(newField);
@@ -226,16 +195,18 @@ namespace Kentico.Xperience.KSP.Migrate.Services
                                 }
                             }
 
-                            if (f.MinItems.HasValue)
-                            {
-                                field.Settings["minitems"] = f.MinItems.Value.ToString();
-                            }
+                            //if (f.MinItems.HasValue)
+                            //{
+                            //    field.Settings["minitems"] = f.MinItems.Value.ToString();
+                            //}
 
-                            if (f.MaxItems.HasValue)
-                            {
-                                field.Settings["maxitems"] = f.MaxItems.Value.ToString();
-                            }
-                             
+                            //if (f.MaxItems.HasValue)
+                            //{
+                            //    field.Settings["maxitems"] = f.MaxItems.Value.ToString();
+                            //}
+
+                            ApplyMinMaxSettings(field, f);
+
                             msg = "Updated";
 
                             formDefinition = ApplyVisibility(formDefinition, f.Name, f.Visibility);
@@ -422,6 +393,36 @@ namespace Kentico.Xperience.KSP.Migrate.Services
             }
 
             return new FormInfo(doc.OuterXml);
+        }
+
+        private void ApplyMinMaxSettings(FormFieldInfo field, FieldDto f)
+        {
+            var ft = f.FieldType?.ToLower();
+
+            switch (ft)
+            {
+                case "textarea":
+                    if (f.MinItems.HasValue)
+                        field.Settings["MinRowsNumber"] = f.MinItems.Value.ToString();
+                    if (f.MaxItems.HasValue)
+                        field.Settings["MaxRowsNumber"] = f.MaxItems.Value.ToString();
+                    break;
+
+                case "pageselector":
+                    // MinItems ไม่มีใน UI, มีแค่ MaximumPages
+                    if (f.MaxItems.HasValue)
+                        field.Settings["MaximumPages"] = f.MaxItems.Value.ToString();
+                    break;
+
+                case "contentitemselector":
+                    if (f.MinItems.HasValue)
+                        field.Settings["MinimumItems"] = f.MinItems.Value.ToString();
+                    if (f.MaxItems.HasValue)
+                        field.Settings["MaximumItems"] = f.MaxItems.Value.ToString();
+                    break;
+
+                    // FieldType อื่นที่ไม่มี min/max → ไม่ทำอะไร
+            }
         }
 
         private void LogError(string message, Exception ex)
