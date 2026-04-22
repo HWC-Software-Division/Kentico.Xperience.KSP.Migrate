@@ -1,3 +1,5 @@
 <Solution>
   <Project Path="Kentico.Xperience.KSP.Migrate/Kentico.Xperience.KSP.Migrate.csproj" />
+  <Project Path="KSP.Admin/KSP.Admin.csproj" />
+  <Project Path="KSP.Core/KSP.Core.csproj" />
 </Solution>
