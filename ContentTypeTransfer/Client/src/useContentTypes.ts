@@ -1,5 +1,7 @@
-import { useState, useEffect, useCallback } from "react";
+import * as React from "react";
 import { ApiResponse, ContentType } from "./types";
+
+const { useState, useEffect, useCallback } = React;
 
 export function useContentTypes(apiBaseUrl: string) {
   const [items, setItems]     = useState<ContentType[]>([]);

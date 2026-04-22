@@ -21,7 +21,7 @@
 
 	<ItemGroup>
 		<AdminClientPath Include="Client\dist\**">
-			<ProjectName>web-admin</ProjectName>
+			<ProjectName>web.admin</ProjectName>
 		</AdminClientPath>
 	</ItemGroup>
 

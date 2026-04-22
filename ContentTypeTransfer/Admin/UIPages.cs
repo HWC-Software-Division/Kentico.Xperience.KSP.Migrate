@@ -1,6 +1,30 @@
-// ลบ assembly attributes ออกทั้งหมด ไม่ต้องมี [assembly: UIPage(...)] เลย
-
 using Kentico.Xperience.Admin.Base;
+using Kentico.Xperience.Admin.Base.UIPages;
+
+// UIPage attributes อยู่ใน ContentTypeTransfer assembly เดียวกับ class definitions
+[assembly: UIPage(
+    parentType:   typeof(ContentTypeTransfer.Admin.ContentTypeTransferApp),
+    slug:         "overview",
+    uiPageType:   typeof(ContentTypeTransfer.Admin.OverviewPage),
+    name:         "Overview",
+    templateName: "@contenttypetransfer/web.admin/OverviewPageTemplate",
+    order:        UIPageOrder.First)]
+
+[assembly: UIPage(
+    parentType:   typeof(ContentTypeTransfer.Admin.ContentTypeTransferApp),
+    slug:         "export",
+    uiPageType:   typeof(ContentTypeTransfer.Admin.ExportPage),
+    name:         "Export",
+    templateName: "@contenttypetransfer/web.admin/ExportPageTemplate",
+    order:        200)]
+
+[assembly: UIPage(
+    parentType:   typeof(ContentTypeTransfer.Admin.ContentTypeTransferApp),
+    slug:         "import",
+    uiPageType:   typeof(ContentTypeTransfer.Admin.ImportPage),
+    name:         "Import",
+    templateName: "@contenttypetransfer/web.admin/ImportPageTemplate",
+    order:        300)]
 
 namespace ContentTypeTransfer.Admin;
 
