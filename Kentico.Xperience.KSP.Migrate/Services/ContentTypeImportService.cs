@@ -39,9 +39,6 @@ namespace Kentico.Xperience.KSP.Migrate.Services
                     ClassShortName = GenerateClassShortName(model.CodeName)
                 };
 
-                //var formXml = string.IsNullOrWhiteSpace(contentType.ClassFormDefinition)
-                //                ? "<form></form>"
-                //                : contentType.ClassFormDefinition;
 
                 var formXml = contentType.ClassFormDefinition;
                 string pkXml = "";
@@ -135,13 +132,7 @@ namespace Kentico.Xperience.KSP.Migrate.Services
                                             .Select(ci => ci.ClassGUID.ToString())
                                             .ToList()
                                     );
-
-                            //if (f.MinItems.HasValue)
-                            //    newField.Settings["minitems"] = f.MinItems.Value.ToString();
-
-                            //if (f.MaxItems.HasValue)
-                            //    newField.Settings["maxitems"] = f.MaxItems.Value.ToString();
-
+                                          
                             //Define Min max settings ตาม FieldType
                             ApplyMinMaxSettings(newField, f); 
 
@@ -195,16 +186,6 @@ namespace Kentico.Xperience.KSP.Migrate.Services
                                 }
                             }
 
-                            //if (f.MinItems.HasValue)
-                            //{
-                            //    field.Settings["minitems"] = f.MinItems.Value.ToString();
-                            //}
-
-                            //if (f.MaxItems.HasValue)
-                            //{
-                            //    field.Settings["maxitems"] = f.MaxItems.Value.ToString();
-                            //}
-
                             ApplyMinMaxSettings(field, f);
 
                             msg = "Updated";
@@ -219,10 +200,6 @@ namespace Kentico.Xperience.KSP.Migrate.Services
                     }
 
                 }
-
-                //contentType.ClassFormDefinition = formXmlChanged
-                //    ? formDefinition.GetXmlDefinition()
-                //    : formXml;
 
                 var userFieldsXml = formDefinition.GetXmlDefinition();
                 string finalXml;
@@ -376,7 +353,7 @@ namespace Kentico.Xperience.KSP.Migrate.Services
             if (fieldNode == null) return formDefinition;
 
             var oldNode = fieldNode.SelectSingleNode("visibilityconditiondata");
-            //oldNode?.ParentNode.RemoveChild(oldNode);
+           
             if (oldNode != null && oldNode.ParentNode != null)
             {
                 oldNode.ParentNode.RemoveChild(oldNode);
@@ -408,8 +385,7 @@ namespace Kentico.Xperience.KSP.Migrate.Services
                         field.Settings["MaxRowsNumber"] = f.MaxItems.Value.ToString();
                     break;
 
-                case "pageselector":
-                    // MinItems ไม่มีใน UI, มีแค่ MaximumPages
+                case "pageselector":                    
                     if (f.MaxItems.HasValue)
                         field.Settings["MaximumPages"] = f.MaxItems.Value.ToString();
                     break;
@@ -420,8 +396,6 @@ namespace Kentico.Xperience.KSP.Migrate.Services
                     if (f.MaxItems.HasValue)
                         field.Settings["MaximumItems"] = f.MaxItems.Value.ToString();
                     break;
-
-                    // FieldType อื่นที่ไม่มี min/max → ไม่ทำอะไร
             }
         }
 
