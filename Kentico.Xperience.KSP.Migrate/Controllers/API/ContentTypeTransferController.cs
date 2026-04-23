@@ -67,12 +67,12 @@ public class ContentTypeTransferController : ControllerBase
                 WriteIndented = true
             });
 
-            var zipBytes = CreateZip(json);
+            var jsonBytes = CreateJsonFile(json);
 
             var date = DateTime.Now.ToString("yyyyMMdd_HHmm");
             var fileName = $"export_content_types_{date}.zip";
 
-            return File(zipBytes, "application/zip", fileName);
+            return File(jsonBytes, "application/zip", fileName);
         }
         catch (Exception ex)
         {
@@ -163,16 +163,12 @@ public class ContentTypeTransferController : ControllerBase
     private static int? TryParseInt(object? v) =>
         v != null && int.TryParse(v.ToString(), out var n) ? n : null;
 
-    private byte[] CreateZip(string json)
+    private byte[] CreateJsonFile(string json)
     {
         using (var memoryStream = new MemoryStream())
         {
             using (var archive = new System.IO.Compression.ZipArchive(memoryStream, System.IO.Compression.ZipArchiveMode.Create, true))
-            {
-                var date = DateTime.Now.ToString("yyyyMMdd");
-
-                var fileName = $"export-error-{date}.json";
-
+            { 
                 var entry = archive.CreateEntry("content-types.json");
 
                 using (var entryStream = entry.Open())

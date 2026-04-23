@@ -58,9 +58,32 @@ export function ExportPage(props: BasePageProps) {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
+      //const a = document.createElement("a");
+      //a.href = url; a.download = `export_content_types_${new Date().toISOString().slice(0,10)}.zip`;
+      //a.click(); URL.revokeObjectURL(url);
+
+      const contentDisposition = res.headers.get("content-disposition");
+
+      let fileName = "export.zip"; //default fallback
+
+      if (contentDisposition) {
+          let match = contentDisposition.match(/filename\*\=UTF-8''(.+)/);
+          if (match && match[1]) {
+              fileName = decodeURIComponent(match[1]);
+          } else {
+              // fallback ไป filename ปกติ
+              match = contentDisposition.match(/filename="?(.+?)"?($|;)/);
+              if (match && match[1]) {
+                  fileName = match[1];
+              }
+          }
+      }
+
       const a = document.createElement("a");
-      a.href = url; a.download = `content-types-${new Date().toISOString().slice(0,10)}.zip`;
-      a.click(); URL.revokeObjectURL(url);
+      a.href = url;
+      a.download = fileName; //use filename from backend
+      a.click();
+      URL.revokeObjectURL(url);
       setStatus("success");
     } catch { setStatus("error"); }
   };
