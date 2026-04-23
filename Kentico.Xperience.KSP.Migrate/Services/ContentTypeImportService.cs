@@ -448,8 +448,17 @@ namespace Kentico.Xperience.KSP.Migrate.Services
         {
             var date = DateTime.Now.ToString("yyyyMMdd");
 
-            var fileName = $"logs/import-error-{date}.txt";
+            //var fileName = $"logs/import-error-{date}.txt"; 
 
+            var folderPath = @"D:\Web\project.xbyk\Kentico.Xperience.KSP.Migrate\Kentico.Xperience.KSP.Migrate\logs";
+
+            var filePath = System.IO.Path.Combine(folderPath, $"import-error-{date}.txt");
+
+            // ✅ สร้าง folder (ถ้ายังไม่มี)
+            Directory.CreateDirectory(folderPath);
+
+            //สร้าง folder ถ้ายังไม่มี
+            Directory.CreateDirectory(folderPath);
             var log = $@"
 [{DateTime.Now}]
 {message}
@@ -457,7 +466,7 @@ ERROR: {ex.Message}
 STACK: {ex.StackTrace}
 --------------------------";
 
-            System.IO.File.AppendAllText(fileName, log);
+            System.IO.File.AppendAllText(folderPath, log);
         }
 
     }
