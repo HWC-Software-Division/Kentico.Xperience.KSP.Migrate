@@ -7,7 +7,7 @@ using Kentico.Xperience.Admin.Base.UIPages;
     slug:         "overview",
     uiPageType:   typeof(KSP.Admin.UIPages.OverviewPage),
     name:         "Overview",
-    templateName: "@ksp/admin/OverviewPageTemplate",
+    templateName: "@ksp/admin/OverviewPage",
     order:        UIPageOrder.First)]
 
 [assembly: UIPage(
@@ -15,7 +15,7 @@ using Kentico.Xperience.Admin.Base.UIPages;
     slug:         "export",
     uiPageType:   typeof(KSP.Admin.UIPages.ExportPage),
     name:         "Export",
-    templateName: "@ksp/admin/ExportPageTemplate",
+    templateName: "@ksp/admin/ExportPage",
     order:        200)]
 
 [assembly: UIPage(
@@ -23,7 +23,7 @@ using Kentico.Xperience.Admin.Base.UIPages;
     slug:         "import",
     uiPageType:   typeof(KSP.Admin.UIPages.ImportPage),
     name:         "Import",
-    templateName: "@ksp/admin/ImportPageTemplate",
+    templateName: "@ksp/admin/ImportPage",
     order:        300)]
 
 namespace KSP.Admin.UIPages;

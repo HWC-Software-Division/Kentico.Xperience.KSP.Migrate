@@ -17,7 +17,9 @@ builder.Services.AddXperienceCommunityLocalization();
 // KSP.Core services
 builder.Services.AddScoped<ILocalStringMigrationService, LocalStringMigrationService>();
 
-builder.Services.AddControllersWithViews();
+builder.Services.AddControllersWithViews()
+    .AddJsonOptions(o =>
+        o.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase);
 
 var app = builder.Build();
 
