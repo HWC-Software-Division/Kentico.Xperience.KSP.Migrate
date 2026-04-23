@@ -60,7 +60,9 @@ namespace Kentico.Xperience.KSP.Migrate.Services
                         AllowedContentTypes = GetAllowedTypes(f),
                         DataSource = f.Settings["Options"]?.ToString(),
                         Visible = f.Visible,
-                        Visibility = GetVisibility(form, f)
+                        Visibility = GetVisibility(form, f),
+                        MinItems = GetMinItems(f),
+                        MaxItems = GetMaxItems(f)
                     });
                 }
 
@@ -156,6 +158,48 @@ namespace Kentico.Xperience.KSP.Migrate.Services
             }
 
             return result.Any() ? result : null;
+        }
+
+        private int? GetMinItems(FormFieldInfo f)
+        {
+            var control = f.Settings["controlname"]?.ToString();
+
+            return control switch
+            {
+                "Kentico.Administration.TextArea" =>
+                    TryParseInt(f.Settings["MinRowsNumber"]?.ToString()),
+
+                "Kentico.Administration.ContentItemSelector" =>
+                    TryParseInt(f.Settings["MinimumItems"]?.ToString()),
+
+                // WebPageSelector ไม่มี min
+                _ => null
+            };
+        }
+
+        private int? GetMaxItems(FormFieldInfo f)
+        {
+            var control = f.Settings["controlname"]?.ToString();
+
+            return control switch
+            {
+                "Kentico.Administration.TextArea" =>
+                    TryParseInt(f.Settings["MaxRowsNumber"]?.ToString()),
+
+                "Kentico.Administration.ContentItemSelector" =>
+                    TryParseInt(f.Settings["MaximumItems"]?.ToString()),
+
+                "Kentico.Administration.WebPageSelector" =>
+                    TryParseInt(f.Settings["MaximumPages"]?.ToString()),
+
+                _ => null
+            };
+        }
+
+        private int? TryParseInt(string value)
+        {
+            if (string.IsNullOrEmpty(value)) return null;
+            return int.TryParse(value, out var result) ? result : null;
         }
     }
 }
