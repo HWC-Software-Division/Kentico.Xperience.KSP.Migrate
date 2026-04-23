@@ -21,6 +21,9 @@ builder.Services.AddControllersWithViews()
     .AddJsonOptions(o =>
         o.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase);
 
+builder.Services.AddScoped<ContentTypeImportService>();
+builder.Services.AddScoped<ContentTypeExportService>();
+
 var app = builder.Build();
 
 app.InitKentico();
