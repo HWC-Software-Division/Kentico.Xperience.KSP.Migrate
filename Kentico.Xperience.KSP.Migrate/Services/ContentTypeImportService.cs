@@ -30,15 +30,16 @@ namespace Kentico.Xperience.KSP.Migrate.Services
 
                     ClassContactOverwriteEnabled = false,
                     ClassCodeGenerationSettings = GenerateClassCodeGenerationSettings(model.CodeName),
-                    ClassIconClass = "icon-kentico",
-                    ClassHasUnmanagedDbSchema = false,
-                    ClassWebPageHasUrl = false, //0 = No URL, 1 = Have URL
-
+                    ClassHasUnmanagedDbSchema = false, 
                     ClassType = "Content",
                     ClassContentTypeType = "Website",
                     ClassShortName = GenerateClassShortName(model.CodeName)
                 };
 
+                // Update display name และ icon ทั้ง create และ update
+                contentType.ClassDisplayName = model.Name;
+                contentType.ClassIconClass = string.IsNullOrEmpty(model.IconClass) ? "icon-kentico" : model.IconClass;
+                contentType.ClassWebPageHasUrl = model.WebPageHasUrl; //0, false = No URL, 1, true = Have URL
 
                 var formXml = contentType.ClassFormDefinition;
                 string pkXml = "";

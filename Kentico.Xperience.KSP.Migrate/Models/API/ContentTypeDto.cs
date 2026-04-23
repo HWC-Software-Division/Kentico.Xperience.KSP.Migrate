@@ -4,8 +4,12 @@ namespace Kentico.Xperience.KSP.Migrate.Models.API
 {
     public class ContentTypeDto
     {
-        public string Name { get; set; }
+        public string Name { get; set; }  //Display name
         public string CodeName { get; set; }
+
+        public string IconClass { get; set; }
+        public bool WebPageHasUrl { get; set; }
+
         public List<FieldDto> Fields { get; set; }
     }
 

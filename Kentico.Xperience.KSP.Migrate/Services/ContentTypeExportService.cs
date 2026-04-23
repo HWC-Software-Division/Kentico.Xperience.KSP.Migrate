@@ -26,6 +26,9 @@ namespace Kentico.Xperience.KSP.Migrate.Services
                 {
                     Name = c.ClassDisplayName,
                     CodeName = c.ClassName,
+                    IconClass = c.ClassIconClass,
+                    WebPageHasUrl = c.ClassWebPageHasUrl,
+
                     Fields = new List<FieldDto>()
                 };
 
