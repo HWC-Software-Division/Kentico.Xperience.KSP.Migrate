@@ -1,5 +1,8 @@
 using Kentico.Web.Mvc;
-using KSP.Core.Services;
+using Kentico.Xperience.KSP.Migrate.Services;
+using ILocalStringMigrationService = KSP.Core.Services.ILocalStringMigrationService;
+using LocalStringMigrationService = KSP.Core.Services.LocalStringMigrationService;
+
 
 var builder = WebApplication.CreateBuilder(args);
 

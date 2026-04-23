@@ -228,8 +228,6 @@ namespace Kentico.Xperience.KSP.Migrate.Services
                     finalXml = userFieldsXml;
                 }
 
-                LogDebug($"[DEBUG] {model.CodeName} - ClassFormDefinition:\n{finalXml}");
-
                 contentType.ClassFormDefinition = finalXml;
                 DataClassInfoProvider.SetDataClassInfo(contentType);
 
@@ -462,12 +460,5 @@ STACK: {ex.StackTrace}
             System.IO.File.AppendAllText(fileName, log);
         }
 
-        private void LogDebug(string message)
-        {
-            var date = DateTime.Now.ToString("yyyyMMdd");
-            var fileName = $"logs/import-debug-{date}.txt";
-            var log = $"[{DateTime.Now}]\n{message}\n--------------------------\n";
-            System.IO.File.AppendAllText(fileName, log);
-        }
     }
 }

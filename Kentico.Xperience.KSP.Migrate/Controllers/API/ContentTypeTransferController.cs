@@ -1,9 +1,12 @@
 using CMS.DataEngine;
 using CMS.FormEngine;
+using Kentico.Xperience.KSP.Migrate.Models.API;
+using Kentico.Xperience.KSP.Migrate.Services;
 using Microsoft.AspNetCore.Mvc;
 using System.IO.Compression;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using static HotChocolate.ErrorCodes;
 
 namespace Kentico.Xperience.KSP.Migrate.Controllers.API;
 
@@ -11,6 +14,17 @@ namespace Kentico.Xperience.KSP.Migrate.Controllers.API;
 [Route("api/content-type-transfer")]
 public class ContentTypeTransferController : ControllerBase
 {
+    private readonly ContentTypeExportService _exportService;
+    private readonly ContentTypeImportService _importService;
+
+    public ContentTypeTransferController(
+        ContentTypeExportService exportService,
+        ContentTypeImportService importService)
+    {
+        _exportService = exportService;
+        _importService = importService;
+    }
+
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
         WriteIndented          = true,
@@ -47,24 +61,18 @@ public class ContentTypeTransferController : ControllerBase
             if (req?.CodeNames == null || req.CodeNames.Count == 0)
                 return BadRequest("No code names provided.");
 
-            var dtos = req.CodeNames
-                .Select(cn => DataClassInfoProvider.GetDataClassInfo(cn))
-                .Where(c => c != null)
-                .Select(MapToExportDto!)
-                .ToList();
-
-            var json = JsonSerializer.Serialize(dtos, JsonOpts);
-
-            using var ms = new MemoryStream();
-            using (var zip = new ZipArchive(ms, ZipArchiveMode.Create, leaveOpen: true))
+            var dtos = _exportService.Export(req.CodeNames);
+            var json = System.Text.Json.JsonSerializer.Serialize(dtos, new System.Text.Json.JsonSerializerOptions
             {
-                var entry = zip.CreateEntry("content-types.json", CompressionLevel.Fastest);
-                using var writer = new StreamWriter(entry.Open());
-                writer.Write(json);
-            }
+                WriteIndented = true
+            });
 
-            return File(ms.ToArray(), "application/zip",
-                $"content-types-{DateTime.UtcNow:yyyy-MM-dd}.zip");
+            var zipBytes = CreateZip(json);
+
+            var date = DateTime.Now.ToString("yyyyMMdd_HHmm");
+            var fileName = $"export_content_types_{date}.zip";
+
+            return File(zipBytes, "application/zip", fileName);
         }
         catch (Exception ex)
         {
@@ -82,7 +90,7 @@ public class ContentTypeTransferController : ControllerBase
             if (file == null || file.Length == 0)
                 return Ok(new ApiResp<ImportResult>("No file uploaded."));
 
-            List<ExportDto> dtos;
+            List<ContentTypeDto> dtos;
             using (var ms = new MemoryStream())
             {
                 file.CopyTo(ms);
@@ -92,7 +100,7 @@ public class ContentTypeTransferController : ControllerBase
                     ?? throw new InvalidOperationException("content-types.json not found in zip.");
                 using var reader = new StreamReader(entry.Open());
                 var json = reader.ReadToEnd();
-                dtos = JsonSerializer.Deserialize<List<ExportDto>>(json,
+                dtos = JsonSerializer.Deserialize<List<ContentTypeDto>>(json,
                            new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
                        ?? new();
             }
@@ -102,8 +110,10 @@ public class ContentTypeTransferController : ControllerBase
 
             foreach (var dto in dtos)
             {
-                try   { ApplyDto(dto, ref created, ref updated); }
-                catch (Exception ex) { errors.Add($"{dto.CodeName}: {ex.Message}"); }
+                var (message, codeName, _) = _importService.Import(dto);
+                if (message == "Created")      created++;
+                else if (message == "Updated") updated++;
+                else                           errors.Add($"{codeName}: {message}");
             }
 
             return Ok(new ApiResp<ImportResult>(new ImportResult(created, updated, errors)));
@@ -114,7 +124,7 @@ public class ContentTypeTransferController : ControllerBase
         }
     }
 
-    // ─── helpers ─────────────────────────────────────────────────────────────
+    // ─── helpers (List only) ──────────────────────────────────────────────────
 
     private static ContentTypeResponse MapToContentTypeResponse(DataClassInfo c)
     {
@@ -141,29 +151,6 @@ public class ContentTypeTransferController : ControllerBase
         Visible:             f.Visible
     );
 
-    private static ExportDto MapToExportDto(DataClassInfo c)
-    {
-        var fields = GetFields(c);
-        return new ExportDto
-        {
-            Name     = c.ClassDisplayName,
-            CodeName = c.ClassName,
-            Fields   = fields.Select(f => new ExportFieldDto
-            {
-                Name         = f.Name,
-                DataType     = f.DataType,
-                IsRequired   = !f.AllowEmpty,
-                Size         = f.Size > 0 ? f.Size : null,
-                DefaultValue = f.DefaultValue,
-                FieldType    = MapControlToFieldType(f.Settings["controlname"]?.ToString()),
-                Caption      = f.Caption,
-                DataSource   = f.Settings["Options"]?.ToString(),
-                MinItems     = TryParseInt(f.Settings["MinimumPages"]),
-                MaxItems     = TryParseInt(f.Settings["MaximumPages"]),
-            }).ToList()
-        };
-    }
-
     private static List<FormFieldInfo> GetFields(DataClassInfo c)
     {
         if (string.IsNullOrEmpty(c.ClassFormDefinition)) return new();
@@ -173,108 +160,34 @@ public class ContentTypeTransferController : ControllerBase
                  .ToList();
     }
 
-    private static void ApplyDto(ExportDto dto, ref int created, ref int updated)
-    {
-        var existing    = DataClassInfoProvider.GetDataClassInfo(dto.CodeName);
-        var isNew       = existing == null;
-        var contentType = existing ?? new DataClassInfo
-        {
-            ClassName        = dto.CodeName,
-            ClassDisplayName = dto.Name,
-            ClassTableName   = dto.CodeName.Replace(".", "_"),
-        };
-
-        var formXml = string.IsNullOrWhiteSpace(contentType.ClassFormDefinition)
-            ? "<form></form>"
-            : contentType.ClassFormDefinition;
-        var fi  = new FormInfo(formXml);
-        var changed = false;
-
-        foreach (var f in dto.Fields)
-        {
-            var existing_f = fi.GetFormField(f.Name);
-            var size       = (f.Size.HasValue && f.Size > 0) ? f.Size.Value : 200;
-            var allowEmpty = f.IsRequired ? "false" : "true";
-            var ctrl       = MapFieldTypeToControl(f.FieldType);
-            var caption    = string.IsNullOrEmpty(f.Caption) ? f.Name : f.Caption;
-            var defaultXml = string.IsNullOrEmpty(f.DefaultValue)
-                ? "" : $"<defaultvalue>{System.Security.SecurityElement.Escape(f.DefaultValue)}</defaultvalue>";
-            var dropOpts   = f.FieldType?.ToLower() == "dropdown" ? (f.DataSource ?? "") : "";
-
-            if (existing_f == null)
-            {
-                formXml = formXml.Replace("</form>",
-                    $"<field column=\"{f.Name}\" columntype=\"{MapDataType(f.DataType, f.FieldType)}\" columnsize=\"{size}\" allowempty=\"{allowEmpty}\" visible=\"true\" enabled=\"true\">" +
-                    $"<properties><fieldcaption>{caption}</fieldcaption>{defaultXml}</properties>" +
-                    $"<settings><controlname>{ctrl}</controlname><Options>{dropOpts}</Options><OptionsValueSeparator>;</OptionsValueSeparator></settings>" +
-                    "</field>\n</form>");
-            }
-            else
-            {
-                existing_f.Caption    = caption;
-                existing_f.AllowEmpty = allowEmpty != "false";
-                existing_f.Size       = size;
-                if (!string.IsNullOrEmpty(f.DefaultValue)) existing_f.DefaultValue = f.DefaultValue;
-                existing_f.Settings["controlname"] = ctrl;
-                if (f.FieldType?.ToLower() == "dropdown")
-                {
-                    existing_f.Settings["Options"] = dropOpts;
-                    existing_f.Settings["OptionsValueSeparator"] = ";";
-                }
-                changed = true;
-            }
-        }
-
-        contentType.ClassFormDefinition = changed ? fi.GetXmlDefinition() : formXml;
-        DataClassInfoProvider.SetDataClassInfo(contentType);
-
-        if (isNew) created++; else updated++;
-    }
-
-    private static string MapDataType(string? dt, string? fieldType) =>
-        (fieldType?.ToLower() is "pageselector" or "pages" || dt?.ToLower() == "page") ? "webpages" :
-        dt?.ToLower() switch
-        {
-            "text"                 => "text",
-            "longtext"             => "richtext",
-            "integer"              => "integer",
-            "boolean"              => "boolean",
-            "guid"                 => "guid",
-            "contentitemreference" => "contentitemreference",
-            _                      => "text",
-        };
-
-    private static string MapFieldTypeToControl(string? ft) =>
-        ft?.ToLower().Trim() switch
-        {
-            "textbox"                                        => "Kentico.Administration.TextInput",
-            "textarea"                                       => "Kentico.Administration.TextArea",
-            "richtext"                                       => "Kentico.Administration.RichTextEditor",
-            "dropdown"                                       => "Kentico.Administration.DropDownSelector",
-            "checkbox"                                       => "Kentico.Administration.CheckBox",
-            "contentitemselector" or "combinedcontentselector" => "Kentico.Administration.ContentItemSelector",
-            "pageselector" or "pages"                        => "Kentico.Administration.WebPageSelector",
-            _                                                => "Kentico.Administration.TextInput",
-        };
-
-    private static string MapControlToFieldType(string? ctrl) =>
-        ctrl switch
-        {
-            "Kentico.Administration.TextInput"         => "textbox",
-            "Kentico.Administration.TextArea"          => "textarea",
-            "Kentico.Administration.RichTextEditor"    => "richtext",
-            "Kentico.Administration.DropDownSelector"  => "dropdown",
-            "Kentico.Administration.CheckBox"          => "checkbox",
-            "Kentico.Administration.ContentItemSelector" => "contentitemselector",
-            "Kentico.Administration.WebPageSelector"   => "pageselector",
-            _                                          => "textbox",
-        };
-
     private static int? TryParseInt(object? v) =>
         v != null && int.TryParse(v.ToString(), out var n) ? n : null;
+
+    private byte[] CreateZip(string json)
+    {
+        using (var memoryStream = new MemoryStream())
+        {
+            using (var archive = new System.IO.Compression.ZipArchive(memoryStream, System.IO.Compression.ZipArchiveMode.Create, true))
+            {
+                var date = DateTime.Now.ToString("yyyyMMdd");
+
+                var fileName = $"export-error-{date}.json";
+
+                var entry = archive.CreateEntry("content-types.json");
+
+                using (var entryStream = entry.Open())
+                using (var writer = new StreamWriter(entryStream))
+                {
+                    writer.Write(json);
+                }
+            }
+
+            return memoryStream.ToArray();
+        }
+    }
 }
 
-// ─── DTOs / responses ────────────────────────────────────────────────────────
+// ─── DTOs / responses ─────────────────────────────────────────────────────────
 
 public record ApiResp<T>
 {
@@ -282,16 +195,16 @@ public record ApiResp<T>
     public T?      Data    { get; init; }
     public string? Error   { get; init; }
 
-    public ApiResp(T data)          { Success = true;  Data  = data; }
-    public ApiResp(string error)    { Success = false; Error = error; }
+    public ApiResp(T data)       { Success = true;  Data  = data; }
+    public ApiResp(string error) { Success = false; Error = error; }
 }
 
 public record ContentTypeResponse(string Name, string CodeName, List<FieldResponse> Fields);
 
 public record FieldResponse(
-    string   Name, string DataType, bool IsRequired, int Size,
-    string?  DefaultValue, string FieldType, string? Caption,
-    string?  DataSource, int? MinItems, int? MaxItems,
+    string    Name, string DataType, bool IsRequired, int Size,
+    string?   DefaultValue, string FieldType, string? Caption,
+    string?   DataSource, int? MinItems, int? MaxItems,
     string[]? AllowedContentTypes, bool Visible);
 
 public record ImportResult(int Created, int Updated, List<string> Errors);
@@ -299,25 +212,4 @@ public record ImportResult(int Created, int Updated, List<string> Errors);
 public class ExportRequest
 {
     public List<string> CodeNames { get; set; } = new();
-}
-
-public class ExportDto
-{
-    public string          Name     { get; set; } = "";
-    public string          CodeName { get; set; } = "";
-    public List<ExportFieldDto> Fields { get; set; } = new();
-}
-
-public class ExportFieldDto
-{
-    public string  Name         { get; set; } = "";
-    public string  DataType     { get; set; } = "";
-    public bool    IsRequired   { get; set; }
-    public int?    Size         { get; set; }
-    public string? DefaultValue { get; set; }
-    public string? FieldType    { get; set; }
-    public string? Caption      { get; set; }
-    public string? DataSource   { get; set; }
-    public int?    MinItems     { get; set; }
-    public int?    MaxItems     { get; set; }
 }
