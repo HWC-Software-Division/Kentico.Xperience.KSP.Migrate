@@ -4,6 +4,7 @@ using Kentico.Xperience.KSP.Migrate.Models.API;
 using Microsoft.AspNetCore.Mvc;
 using System;
 using System.Collections.Generic;
+using System.Data;
 using System.Linq;
 using System.Xml;
 
@@ -29,6 +30,7 @@ namespace Kentico.Xperience.KSP.Migrate.Services
                     IconClass = c.ClassIconClass,
                     WebPageHasUrl = c.ClassWebPageHasUrl,
 
+                    AllowedChannels = GetAllowedChannels(c.ClassID),
                     Fields = new List<FieldDto>()
                 };
 
@@ -126,6 +128,25 @@ namespace Kentico.Xperience.KSP.Migrate.Services
                 CaseSensitive = node.SelectSingleNode("Properties/CaseSensitive")?.InnerText == "true",
                 Operator = node.SelectSingleNode("Identifier")?.InnerText
             };
+        }
+
+        private List<string> GetAllowedChannels(int classId)
+        {
+            var result = new List<string>();
+
+            var rows = ConnectionHelper.ExecuteQuery($@"
+                                                        SELECT ch.ChannelName 
+                                                        FROM CMS_ContentTypeChannel ctc
+                                                        JOIN CMS_Channel ch ON ch.ChannelID = ctc.ContentTypeChannelChannelID
+                                                        WHERE ctc.ContentTypeChannelContentTypeID = {classId}
+                                                    ", null, QueryTypeEnum.SQLQuery);
+
+            foreach (DataRow row in rows.Tables[0].Rows)
+            {
+                result.Add(row["ChannelName"].ToString());
+            }
+
+            return result.Any() ? result : null;
         }
     }
 }

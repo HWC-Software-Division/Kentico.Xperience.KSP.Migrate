@@ -11,6 +11,9 @@ namespace Kentico.Xperience.KSP.Migrate.Models.API
         public bool WebPageHasUrl { get; set; }
 
         public List<FieldDto> Fields { get; set; }
+
+        public List<string> AllowedChannels { get; set; } //ChannelName
+
     }
 
     public class FieldDto

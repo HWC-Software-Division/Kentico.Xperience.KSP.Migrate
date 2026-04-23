@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Xml;
+using System.Data;
 
 namespace Kentico.Xperience.KSP.Migrate.Services
 {
@@ -232,6 +233,9 @@ namespace Kentico.Xperience.KSP.Migrate.Services
                 contentType.ClassFormDefinition = finalXml;
                 DataClassInfoProvider.SetDataClassInfo(contentType);
 
+                //Update set Channel
+                SaveAllowedChannels(contentType.ClassID, model.AllowedChannels);
+
                 return (msg, model.CodeName, model.Fields.Count);
             }
             catch (Exception ex)
@@ -397,6 +401,48 @@ namespace Kentico.Xperience.KSP.Migrate.Services
                     if (f.MaxItems.HasValue)
                         field.Settings["MaximumItems"] = f.MaxItems.Value.ToString();
                     break;
+            }
+        }
+
+        private void SaveAllowedChannels(int classId, List<string> channelNames)
+        {
+            if (channelNames == null || !channelNames.Any())
+                return;
+
+            foreach (var channelName in channelNames)
+            {
+                // หา ChannelID จาก ChannelName
+                var channelRow = ConnectionHelper.ExecuteQuery($@"
+                                                                    SELECT ChannelID FROM CMS_Channel 
+                                                                    WHERE ChannelName = '{channelName}'
+                                                                ", null, QueryTypeEnum.SQLQuery);
+
+                if (channelRow.Tables[0].Rows.Count == 0)
+                {
+                    LogError($"[CHANNEL] Channel not found: {channelName}",
+                        new Exception("Channel not found"));
+                    continue;
+                }
+
+                var channelId = (int)channelRow.Tables[0].Rows[0]["ChannelID"];
+
+                // เช็คว่ามี record อยู่แล้วหรือไม่
+                var existing = ConnectionHelper.ExecuteQuery($@"
+                                                                SELECT ContentTypeChannelID 
+                                                                FROM CMS_ContentTypeChannel
+                                                                WHERE ContentTypeChannelChannelID = {channelId}
+                                                                AND ContentTypeChannelContentTypeID = {classId}
+                                                            ", null, QueryTypeEnum.SQLQuery);
+
+                if (existing.Tables[0].Rows.Count == 0)
+                {
+                    // Insert ใหม่
+                    ConnectionHelper.ExecuteQuery($@"
+                                                    INSERT INTO CMS_ContentTypeChannel 
+                                                        (ContentTypeChannelChannelID, ContentTypeChannelContentTypeID)
+                                                    VALUES ({channelId}, {classId})
+                                                ", null, QueryTypeEnum.SQLQuery);
+                }
             }
         }
 
