@@ -12,10 +12,19 @@ namespace Kentico.Xperience.KSP.Migrate.Services
 {
     public class ContentTypeExportService 
     {
-        public List<ContentTypeDto> Export()
+        public List<ContentTypeDto> Export(List<string> codeNames = null)
         {
-            var classes = DataClassInfoProvider.GetClasses()
-                .WhereEquals("ClassType", "Content");
+            var query = DataClassInfoProvider.GetClasses().WhereEquals("ClassType", "Content");
+
+            //filter ตาม codeNames ถ้ามีการส่งเข้ามา
+            if (codeNames != null && codeNames.Any())
+            {
+                query = query.WhereIn("ClassName", codeNames);
+            }
+
+            //var classes = DataClassInfoProvider.GetClasses()
+            //    .WhereEquals("ClassType", "Content");
+            var classes = query;
 
             var result = new List<ContentTypeDto>();
 

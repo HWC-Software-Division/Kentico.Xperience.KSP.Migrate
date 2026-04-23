@@ -20,12 +20,10 @@ namespace Kentico.Xperience.KSP.Migrate.Controllers.API
             this.exportService = exportService;
         }
 
-        [HttpGet("content-types")]
-        public IActionResult ExportContentTypes()
+        [HttpPost("content-types")] 
+        public IActionResult ExportContentTypes([FromBody] List<string> codeNames = null)
         {
-            var data = exportService.Export();
-
-            //return Ok(data);
+            var data = exportService.Export(codeNames);
 
             var json = System.Text.Json.JsonSerializer.Serialize(data, new System.Text.Json.JsonSerializerOptions
             {
@@ -40,6 +38,25 @@ namespace Kentico.Xperience.KSP.Migrate.Controllers.API
             return File(zipBytes, "application/zip", fileName);
 
         }
+
+        //[HttpGet("content-types")]
+        //public IActionResult ExportContentTypes([FromQuery] List<string> codeNames = null)
+        //{
+        //    var data = exportService.Export(codeNames);
+
+        //    var json = System.Text.Json.JsonSerializer.Serialize(data, new System.Text.Json.JsonSerializerOptions
+        //    {
+        //        WriteIndented = true
+        //    });
+
+        //    var zipBytes = CreateZip(json);
+
+        //    var date = DateTime.Now.ToString("yyyyMMdd_HHmm");
+        //    var fileName = $"export_content_types_{date}.zip";
+
+        //    return File(zipBytes, "application/zip", fileName);
+
+        //}
 
 
         private byte[] CreateZip(string json)
