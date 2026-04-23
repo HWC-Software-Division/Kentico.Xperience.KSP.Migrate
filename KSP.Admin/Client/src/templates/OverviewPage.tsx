@@ -34,10 +34,17 @@ export function OverviewPage(props: BasePageProps) {
   const avgFields = items.length ? Math.round(items.reduce((a,c)=>a+c.fields.length,0)/items.length) : 0;
 
   return (
-    <div style={{padding:24, fontFamily:"system-ui, sans-serif"}}>
+    <div className="ksp-ct" style={{padding:24, fontFamily:"system-ui, sans-serif"}}>
+      <style>{`
+        .ksp-ct, .ksp-ct h2, .ksp-ct p, .ksp-ct td, .ksp-ct div { color: inherit !important; }
+        .ksp-ct { color: #1a1a1a !important; }
+        .ksp-ct .ksp-muted { color: #888 !important; }
+        .ksp-ct .ksp-subtle { color: #666 !important; }
+        .ksp-ct .ksp-mono  { color: #666 !important; }
+      `}</style>
       <div style={{marginBottom:18}}>
-        <h2 style={{margin:0, fontSize:17, fontWeight:500}}>Content Type Overview</h2>
-        <p style={{margin:"3px 0 0", fontSize:12, color:"#666"}}>All content types from the local XbyK database</p>
+        <h2 style={{margin:0, fontSize:17, fontWeight:500, color:"#1a1a1a"}}>Content Type Overview</h2>
+        <p className="ksp-subtle" style={{margin:"3px 0 0", fontSize:12}}>All content types from the local XbyK database</p>
       </div>
       <div style={{display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:10, marginBottom:18}}>
         {[
@@ -47,7 +54,7 @@ export function OverviewPage(props: BasePageProps) {
           {label:"Avg fields",    value: loading ? "—" : String(avgFields)},
         ].map(s => (
           <div key={s.label} style={{background:"#f6f6f4", borderRadius:7, padding:"12px 14px"}}>
-            <div style={{fontSize:11, color:"#888", marginBottom:4}}>{s.label}</div>
+            <div className="ksp-muted" style={{fontSize:11, marginBottom:4}}>{s.label}</div>
             <div style={{fontSize:22, fontWeight:500}}>{s.value}</div>
           </div>
         ))}
@@ -76,8 +83,8 @@ export function OverviewPage(props: BasePageProps) {
                 const c = NS_COLORS[ns] ?? {bg:"#f1efe8", color:"#5f5e5a", border:"#d3d1c7"};
                 return (
                   <tr key={ct.codeName} style={{borderTop:"0.5px solid #e0e0e0", background: i%2 ? "#fafafa" : "#fff"}}>
-                    <td style={{padding:"8px 12px", fontSize:13, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{ct.name}</td>
-                    <td style={{padding:"8px 12px", fontSize:12, color:"#666", fontFamily:"monospace", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{ct.codeName}</td>
+                    <td style={{padding:"8px 12px", fontSize:13, color:"#1a1a1a", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{ct.name}</td>
+                    <td className="ksp-mono" style={{padding:"8px 12px", fontSize:12, fontFamily:"monospace", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{ct.codeName}</td>
                     <td style={{padding:"8px 12px", fontSize:13}}>
                       <span style={{fontSize:11, padding:"2px 8px", borderRadius:4, fontWeight:500, background:c.bg, color:c.color, border:`0.5px solid ${c.border}`}}>{ns}</span>
                     </td>

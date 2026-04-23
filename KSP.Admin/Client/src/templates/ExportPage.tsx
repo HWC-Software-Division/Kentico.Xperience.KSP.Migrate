@@ -67,11 +67,18 @@ export function ExportPage(props: BasePageProps) {
 
   const btnBase = {padding:"7px 14px", borderRadius:6, fontSize:13, fontWeight:500 as const, cursor:"pointer"};
   return (
-    <div style={{padding:24, fontFamily:"system-ui, sans-serif"}}>
+    <div className="ksp-ct" style={{padding:24, fontFamily:"system-ui, sans-serif"}}>
+      <style>{`
+        .ksp-ct, .ksp-ct h2, .ksp-ct p, .ksp-ct td, .ksp-ct div { color: inherit !important; }
+        .ksp-ct { color: #1a1a1a !important; }
+        .ksp-ct .ksp-muted  { color: #888 !important; }
+        .ksp-ct .ksp-subtle { color: #666 !important; }
+        .ksp-ct .ksp-mono   { color: #666 !important; }
+      `}</style>
       <div style={{display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:18}}>
         <div>
-          <h2 style={{margin:0, fontSize:17, fontWeight:500}}>Export Content Types</h2>
-          <p style={{margin:"3px 0 0", fontSize:12, color:"#666"}}>Select types to export as a .zip package</p>
+          <h2 style={{margin:0, fontSize:17, fontWeight:500, color:"#1a1a1a"}}>Export Content Types</h2>
+          <p className="ksp-subtle" style={{margin:"3px 0 0", fontSize:12}}>Select types to export as a .zip package</p>
         </div>
         <div style={{display:"flex", gap:8}}>
           <button onClick={toggleAll} disabled={loading} style={{...btnBase, background:"#fff", color:"#1a1a1a", border:"0.5px solid #bbb"}}>
@@ -112,8 +119,8 @@ export function ExportPage(props: BasePageProps) {
                   <tr key={ct.codeName} onClick={() => toggleOne(ct.codeName)}
                     style={{borderTop:"0.5px solid #e0e0e0", background: checked?"#eef5fc":i%2?"#fafafa":"#fff", cursor:"pointer"}}>
                     <td style={{padding:"8px 10px"}}><input type="checkbox" checked={checked} onChange={()=>toggleOne(ct.codeName)} onClick={e=>e.stopPropagation()} style={{accentColor:"#185fa5"}}/></td>
-                    <td style={{padding:"8px 12px", fontSize:13, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{ct.name}</td>
-                    <td style={{padding:"8px 12px", fontSize:12, color:"#666", fontFamily:"monospace", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{ct.codeName}</td>
+                    <td style={{padding:"8px 12px", fontSize:13, color:"#1a1a1a", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{ct.name}</td>
+                    <td className="ksp-mono" style={{padding:"8px 12px", fontSize:12, fontFamily:"monospace", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{ct.codeName}</td>
                     <td style={{padding:"8px 12px", fontSize:13}}>{getNs(ct.codeName)}</td>
                     <td style={{padding:"8px 12px", fontSize:13, textAlign:"right", color:"#888"}}>{ct.fields.length}</td>
                   </tr>

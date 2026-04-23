@@ -13,8 +13,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Kentico.Xperience.Core"   Version="31.0.0" />
-    <PackageReference Include="Kentico.Xperience.Admin"  Version="31.0.0" />
+    <PackageReference Include="Kentico.Xperience.Core" Version="31.0.0" />
+    <PackageReference Include="Kentico.Xperience.Admin" Version="31.0.0" />
     <PackageReference Include="Kentico.Xperience.WebApp" Version="31.0.0" />
   </ItemGroup>
 
@@ -33,6 +33,10 @@
     <Compile Remove="Client\node_modules\**" />
     <EmbeddedResource Remove="Client\node_modules\**" />
     <None Remove="Client\node_modules\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Client\dist\" />
   </ItemGroup>
 
 </Project>

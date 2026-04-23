@@ -35,10 +35,15 @@ export function ImportPage(props: BasePageProps) {
   ];
 
   return (
-    <div style={{padding:24, fontFamily:"system-ui, sans-serif"}}>
+    <div className="ksp-ct" style={{padding:24, fontFamily:"system-ui, sans-serif"}}>
+      <style>{`
+        .ksp-ct, .ksp-ct h2, .ksp-ct p, .ksp-ct td, .ksp-ct div { color: inherit !important; }
+        .ksp-ct { color: #1a1a1a !important; }
+        .ksp-ct .ksp-subtle { color: #666 !important; }
+      `}</style>
       <div style={{marginBottom:18}}>
-        <h2 style={{margin:0, fontSize:17, fontWeight:500}}>Import Content Types</h2>
-        <p style={{margin:"3px 0 0", fontSize:12, color:"#666"}}>Upload a .zip file — content types will be created or updated via the migration API</p>
+        <h2 style={{margin:0, fontSize:17, fontWeight:500, color:"#1a1a1a"}}>Import Content Types</h2>
+        <p className="ksp-subtle" style={{margin:"3px 0 0", fontSize:12}}>Upload a .zip file — content types will be created or updated via the migration API</p>
       </div>
       <div onClick={()=>fileRef.current?.click()}
         onDragEnter={()=>setIsDragOver(true)}
@@ -60,7 +65,7 @@ export function ImportPage(props: BasePageProps) {
         )}
       </div>
       <div style={{background:"#fafafa", border:"0.5px solid #e0e0e0", borderRadius:8, padding:"14px 16px", marginBottom:18}}>
-        <div style={{fontSize:13, fontWeight:500, marginBottom:10}}>Import flow</div>
+        <div style={{fontSize:13, fontWeight:500, marginBottom:10, color:"#1a1a1a"}}>Import flow</div>
         {steps.map((s,i) => (
           <div key={i} style={{display:"flex", gap:9, alignItems:"flex-start", marginBottom:6}}>
             <span style={{flexShrink:0, width:18, height:18, borderRadius:"50%", background:"#e6f1fb", color:"#185fa5", display:"inline-flex", alignItems:"center", justifyContent:"center", fontSize:10, fontWeight:500}}>{i+1}</span>
