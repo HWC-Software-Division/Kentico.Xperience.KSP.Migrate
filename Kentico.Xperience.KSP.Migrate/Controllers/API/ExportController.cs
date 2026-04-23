@@ -34,7 +34,10 @@ namespace Kentico.Xperience.KSP.Migrate.Controllers.API
 
             var zipBytes = CreateZip(json);
 
-            return File(zipBytes, "application/zip", "content-types.zip");
+            var date = DateTime.Now.ToString("yyyyMMdd_HHmm");
+            var fileName = $"export_content_types_{date}.zip";
+
+            return File(zipBytes, "application/zip", fileName);
 
         }
 
@@ -45,6 +48,10 @@ namespace Kentico.Xperience.KSP.Migrate.Controllers.API
             {
                 using (var archive = new System.IO.Compression.ZipArchive(memoryStream, System.IO.Compression.ZipArchiveMode.Create, true))
                 {
+                    var date = DateTime.Now.ToString("yyyyMMdd");
+
+                    var fileName = $"export-error-{date}.json";
+
                     var entry = archive.CreateEntry("content-types.json");
 
                     using (var entryStream = entry.Open())
