@@ -30,8 +30,11 @@ export function OverviewPage(props: BasePageProps) {
   const filtered = items.filter(c =>
     c.name.toLowerCase().includes(search.toLowerCase()) ||
     c.codeName.toLowerCase().includes(search.toLowerCase())
-  );
-  const avgFields = items.length ? Math.round(items.reduce((a,c)=>a+c.fields.length,0)/items.length) : 0;
+    );
+    const allNamespace = items.length;
+    const hxcNamespace = items.filter(c => getNs(c.codeName) === "HXC").length;
+    const kspNamespace = items.filter(c => getNs(c.codeName) === "KSP").length;
+    const otherNamespace = allNamespace - hxcNamespace - kspNamespace;
 
   return (
     <div className="ksp-ct" style={{padding:24, fontFamily:"system-ui, sans-serif"}}>
@@ -48,10 +51,10 @@ export function OverviewPage(props: BasePageProps) {
       </div>
       <div style={{display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:10, marginBottom:18}}>
         {[
-          {label:"Total types",   value: loading ? "—" : String(items.length)},
-          {label:"HXC namespace", value: loading ? "—" : String(items.filter(c=>getNs(c.codeName)==="HXC").length)},
-          {label:"KSP namespace", value: loading ? "—" : String(items.filter(c=>getNs(c.codeName)==="KSP").length)},
-          {label:"Avg fields",    value: loading ? "—" : String(avgFields)},
+          { label: "Total types", value: loading ? "—" : String(allNamespace)},
+          { label: "HXC namespace", value: loading ? "—" : String(hxcNamespace)},
+          { label: "KSP namespace", value: loading ? "—" : String(kspNamespace)},
+          { label: "Other namespace", value: loading ? "—" : String(otherNamespace)},
         ].map(s => (
           <div key={s.label} style={{background:"#f6f6f4", borderRadius:7, padding:"12px 14px"}}>
             <div className="ksp-muted" style={{fontSize:11, marginBottom:4}}>{s.label}</div>
