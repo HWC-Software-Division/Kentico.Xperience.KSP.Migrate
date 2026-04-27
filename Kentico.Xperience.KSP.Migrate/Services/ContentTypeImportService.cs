@@ -1,12 +1,17 @@
-﻿using CMS.DataEngine;
+﻿using CMS.Core;
+using CMS.DataEngine;
+using CMS.EventLog;
 using CMS.FormEngine;
+using HotChocolate.Data.Filters;
 using Kentico.Xperience.KSP.Migrate.Models.API;
 using Microsoft.AspNetCore.Mvc;
+using Mono.Cecil;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
+using System.Data;
 using System.Linq;
 using System.Xml;
-using System.Data;
 
 namespace Kentico.Xperience.KSP.Migrate.Services
 {
@@ -198,7 +203,12 @@ namespace Kentico.Xperience.KSP.Migrate.Services
                     catch (Exception exField)
                     {
                         //log ราย field
-                        LogError($"[FIELD ERROR] {model.CodeName} - {f.Name}", exField);
+                        var source = "ContentTypeImportService";
+                        var eventCode = "Field_ERROR";
+                        var eventDescription = $@"{exField} {msg} FIELD ERROR: {model.CodeName} - {f.Name}";
+                        //var eventType = EventTypeEnum.Error.ToString();
+
+                        LogEvent(source, eventCode, eventDescription, "E"); 
                     }
 
                 }
@@ -228,8 +238,6 @@ namespace Kentico.Xperience.KSP.Migrate.Services
                     finalXml = userFieldsXml;
                 }
 
-                LogDebug($"[DEBUG] {model.CodeName} - ClassFormDefinition:\n{finalXml}");
-
                 contentType.ClassFormDefinition = finalXml;
                 DataClassInfoProvider.SetDataClassInfo(contentType);
 
@@ -239,8 +247,14 @@ namespace Kentico.Xperience.KSP.Migrate.Services
                 return (msg, model.CodeName, model.Fields.Count);
             }
             catch (Exception ex)
-            {
-                LogError($"Failed to import content type '{model.CodeName}'", ex);
+            { 
+                var source = "ContentTypeImportService";
+                var eventCode = "Filed_ImportContentType";
+                var eventDescription = $@"{ex} {model.CodeName}";
+                //var eventType = EventTypeEnum.Error.ToString();
+
+                LogEvent(source, eventCode, eventDescription, "E");
+
                 return ($"Error: {ex.Message}", model.CodeName, model.Fields?.Count ?? 0);
             } 
         }
@@ -419,8 +433,16 @@ namespace Kentico.Xperience.KSP.Migrate.Services
 
                 if (channelRow.Tables[0].Rows.Count == 0)
                 {
-                    LogError($"[CHANNEL] Channel not found: {channelName}",
-                        new Exception("Channel not found"));
+                    //LogError($"[CHANNEL] Channel not found: {channelName}",
+                    //    new Exception("Channel not found"));
+
+                    var source = "ContentTypeImportService";
+                    var eventCode = "SaveAllowedChannels";
+                    var eventDescription = $"Channel not found | ChannelName={channelName}";
+                    //var eventType = EventTypeEnum.Error.ToString();
+
+                    LogEvent(source, eventCode, eventDescription, "E");
+
                     continue;
                 }
 
@@ -446,28 +468,20 @@ namespace Kentico.Xperience.KSP.Migrate.Services
             }
         }
 
-        private void LogError(string message, Exception ex)
-        {
-            var date = DateTime.Now.ToString("yyyyMMdd");
+        // Simplified logging method of CMS Event logs
+        //I: Information, W: Warning, E: Error
+        private void LogEvent(string source, string eventCode, string eventDescription, string eventType = "I")
+        { 
 
-            var fileName = $"logs/import-error-{date}.txt";
+            var eventInfo = new EventLogInfo
+            {
+                Source = source,
+                EventCode = eventCode,
+                EventDescription = eventDescription,
+                EventType = eventType
+            };
 
-            var log = $@"
-[{DateTime.Now}]
-{message}
-ERROR: {ex.Message}
-STACK: {ex.StackTrace}
---------------------------";
-
-            System.IO.File.AppendAllText(fileName, log);
-        }
-
-        private void LogDebug(string message)
-        {
-            var date = DateTime.Now.ToString("yyyyMMdd");
-            var fileName = $"logs/import-debug-{date}.txt";
-            var log = $"[{DateTime.Now}]\n{message}\n--------------------------\n";
-            System.IO.File.AppendAllText(fileName, log);
-        }
+            EventLogProvider.LogEvent(eventInfo);            
+        } 
     }
 }

@@ -61,7 +61,6 @@ namespace Kentico.Xperience.KSP.Migrate.Services
                         DataSource = f.Settings["Options"]?.ToString(),
                         Visible = f.Visible,
                         Visibility = GetVisibility(form, f),
-
                         MinItems = GetMinItems(f),
                         MaxItems = GetMaxItems(f)
                     });

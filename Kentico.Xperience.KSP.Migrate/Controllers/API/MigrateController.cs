@@ -1,328 +1,144 @@
-﻿using CMS.Base;
-using CMS.ContentEngine;
-using CMS.DataEngine;
 using CMS.DataEngine;
 using CMS.FormEngine;
-using CMS.Helpers;
-using Kentico.Xperience.Admin.Base;
-using Kentico.Xperience.KSP.Migrate.Models.API;
-using Kentico.Xperience.KSP.Migrate.Services;
-using Microsoft.AspNetCore.Http.HttpResults;
+using KSP.Core.Models;
+using KSP.Core.Services;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
-using Microsoft.VisualBasic.FileIO;
-using Org.BouncyCastle.Utilities;
-using System;
-using System.Collections.Generic;
-using System.Drawing;
-using System.Linq;
-using System.Text;
 using System.Text.Json;
-using System.Threading.Tasks;
 
-namespace Kentico.Xperience.KSP.Migrate.Controllers.API
+namespace Kentico.Xperience.KSP.Migrate.Controllers.API;
+
+[ApiController]
+[Route("api/migrate")]
+public class MigrateController : ControllerBase
 {
-    [ApiController]
-    [Route("api/migrate")]
-    public class MigrateController : ControllerBase
+    private readonly ILocalStringMigrationService _localStringService;
+
+    public MigrateController(ILocalStringMigrationService localStringService) =>
+        _localStringService = localStringService;
+
+    [HttpPost("content-type")]
+    public IActionResult CreateContentType([FromBody] ContentTypeDto model)
     {
-        private readonly ILocalStringMigrationService localStringMigrationService;
-
-        public MigrateController(ILocalStringMigrationService localStringMigrationService)
+        try
         {
-            this.localStringMigrationService = localStringMigrationService;
-        }
+            if (model == null) return BadRequest("Model is null");
 
-        #region ContentType Migration
-
-        [HttpPost("content-type")]
-        public IActionResult CreateContentType([FromBody] ContentTypeDto model)
-        {
-            try
+            var existing   = DataClassInfoProvider.GetDataClassInfo(model.CodeName);
+            var contentType = existing ?? new DataClassInfo
             {
-                DataClassInfo contentType;
-                var formXmlChanged = false;
-                var msg = "";
-
-                if (model == null)
-                    return BadRequest("Model is null");
-                 
-                var existing = DataClassInfoProvider.GetDataClassInfo(model.CodeName);
-                if (existing != null)
-                {
-                    contentType = existing;
-                }
-                else
-                {
-                    contentType = new DataClassInfo
-                    {
-                        ClassName = model.CodeName,
-                        ClassDisplayName = model.Name,
-                        ClassTableName = model.CodeName.Replace(".", "_")
-                    };
-                }
-
-                //build XML form definition + mapping fields
-                var formXml = contentType.ClassFormDefinition;
-                var formDefinition = new FormInfo(contentType.ClassFormDefinition);
-
-                if (string.IsNullOrWhiteSpace(formXml))
-                {
-                    formXml = "<form></form>";
-                }
-
-                foreach (var f in model.Fields)
-                {
-                    ////กัน field ซ้ำ
-                    //if (formXml.Contains($"column=\"{f.Name}\""))
-                    //    continue;
-
-                    var field = formDefinition.GetFormField(f.Name);
-
-                    var allowempty = f.IsRequired ? "false" : "true";
-                    var sizeXml = (f.Size.HasValue && f.Size > 0) ? f.Size.Value : 200;
-                    var defaultXml = string.IsNullOrEmpty(f.DefaultValue) ? "" : $"<defaultvalue>{System.Security.SecurityElement.Escape(f.DefaultValue)}</defaultvalue>";
-                    var caption = string.IsNullOrEmpty(f.Caption) ? f.Name : f.Caption;
-                    var minItems = (f.MinItems.HasValue && f.MinItems > 0) ? f.MinItems.Value : 1;
-                    var maxItems = (f.MaxItems.HasValue && f.MaxItems > 0) ? f.MaxItems.Value : 1;
-
-                    var dropdownOptions = "";
-                    if (f.FieldType?.ToLower() == "dropdown")
-                    {
-                        if (string.IsNullOrWhiteSpace(f.DataSource))
-                            //throw new Exception($"Dropdown '{f.Name}' ไม่มี DataSource");
-                            dropdownOptions = "";
-
-                        dropdownOptions = BuildDropdownOptions(f.DataSource);
-                    }
-
-                    //map form control
-                    var controlName = MapFormControl(f.FieldType);
-                    
-                    if (field == null)
-                    {
-                        //CREATE NEW
-                        var fieldXml = $@"
-                                <field column=""{f.Name}""
-                                       columntype=""{MapToKenticoType(f.DataType, f.FieldType)}""
-                                       columnsize=""{sizeXml}"" 
-                                       allowempty=""{allowempty}""
-                                       visible=""true""
-                                       enabled=""true"">
-                                    <properties>
-                                        <fieldcaption>{caption}</fieldcaption>  
-                                        {defaultXml}
-                                    </properties>
-                                    <settings>
-                                        <controlname>{controlName}</controlname>                                         
-                                         <Options>{dropdownOptions}</Options>
-                                        <OptionsValueSeparator>;</OptionsValueSeparator>                                        
-                                    </settings>
-                                </field>";
-
-                        formXml = formXml.Replace("</form>", fieldXml + "\n</form>");
-
-                        msg = "ContentType created";
-                    }
-                    else 
-                    {
-                        //UPDATE
-                        field.Caption = caption;
-                        field.AllowEmpty = (allowempty == "false")  ? false : true;
-                        field.Size = sizeXml;
-
-                        if (!string.IsNullOrEmpty(f.DefaultValue))
-                        {
-                            field.DefaultValue = f.DefaultValue;
-                        }
-
-                        field.Settings["controlname"] = controlName;
-
-                        if (f.FieldType?.ToLower() == "dropdown")
-                        {
-                            field.Settings["Options"] = dropdownOptions;
-                            field.Settings["OptionsValueSeparator"] = ";";
-                        }
-
-                        formXmlChanged = true;
-                        msg = "ContentType updated";
-                    } 
-                }  
-                
-                if (!formXmlChanged)
-                {
-                    contentType.ClassFormDefinition = formXml;
-                }
-                else
-                {
-                    contentType.ClassFormDefinition = formDefinition.GetXmlDefinition();
-                }
-
-                //create DataClass
-                DataClassInfoProvider.SetDataClassInfo(contentType);
-
-                // STEP 2: update AllowedContentTypes via FormInfo
-                var classInfo = DataClassInfoProvider.GetDataClassInfo(model.CodeName);
-                formDefinition = new FormInfo(classInfo.ClassFormDefinition);
-
-                foreach (var f in model.Fields)
-                {
-                    //For ContentItemSelector  : all Image , Media, ImageBanner etc.
-                    if (f.FieldType?.ToLower() == "contentitemselector")
-                    {
-                        var field = formDefinition.GetFormField(f.Name);
-
-                        if (field != null)
-                        {
-                            var legacyMediaContentType = DataClassInfoProvider.GetDataClassInfo("Legacy.MediaFile");
-                            var legacyMediaGuid = legacyMediaContentType.ClassGUID.ToString();
-
-                            if (legacyMediaContentType != null)
-                            {
-                                var guid = legacyMediaContentType.ClassGUID.ToString();
-
-                                field.Settings["AllowedContentItemTypeIdentifiers"] = $"[\"{guid}\"]";
-                            }
-                        }
-                    }
-
-                    //For PageSelector  : all Navigation , Internal link etc.
-                    if (f.FieldType?.ToLower() == "pageselector")
-                    {
-                        var field = formDefinition.GetFormField(f.Name);
-
-                        if (field != null)
-                        {
-                            field.Settings["MinimumPages"] = (f.MinItems ?? 1).ToString();
-                            field.Settings["MaximumPages"] = (f.MaxItems ?? 1).ToString();                            
-                        }
-                    }
-                }
-
-                // save back
-                classInfo.ClassFormDefinition = formDefinition.GetXmlDefinition();
-                DataClassInfoProvider.SetDataClassInfo(classInfo);
-                 
-                return Ok(new
-                {
-                    message = msg,
-                    model.CodeName,
-                    fields = model.Fields.Count
-                });
-            }
-            catch (Exception ex)
-            {
-                return BadRequest(ex.Message);
-            }
-        }
-
-        private string MapToKenticoType(string type, string fieldType = null)
-        {
-            type = type?.ToLower();
-            fieldType = fieldType?.ToLower();
-
-            if (fieldType == "pageselector" || type == "page")
-                return "webpages";
-
-            return type switch
-            {
-                "text" => "text",
-                "longtext" => "richtext",
-                "integer" => "integer",
-                "boolean" => "boolean",
-                "guid" => "guid", 
-                "contentitemreference" => "contentitemreference",
-                _ => "text"
+                ClassName        = model.CodeName,
+                ClassDisplayName = model.Name,
+                ClassTableName   = model.CodeName.Replace(".", "_")
             };
-        }
 
-        private string MapFormControl(string type)
-        {
-            if (string.IsNullOrEmpty(type))
-                return "Kentico.Administration.TextInput";
+            var formXml        = string.IsNullOrWhiteSpace(contentType.ClassFormDefinition)
+                                     ? "<form></form>"
+                                     : contentType.ClassFormDefinition;
+            var formDefinition = new FormInfo(formXml);
+            var formXmlChanged = false;
+            var msg            = "ContentType created";
 
-            type = type.ToLower().Trim(); 
-
-            return type?.ToLower() switch
+            foreach (var f in model.Fields)
             {
-                "textbox"  => "Kentico.Administration.TextInput",
-                "textarea" => "Kentico.Administration.TextArea",
-                "richtext" => "Kentico.Administration.RichTextEditor",
-                "dropdown" => "Kentico.Administration.DropDownSelector",
-                "checkbox" => "Kentico.Administration.CheckBox",
+                var field       = formDefinition.GetFormField(f.Name);
+                var allowEmpty  = f.IsRequired ? "false" : "true";
+                var size        = (f.Size.HasValue && f.Size > 0) ? f.Size.Value : 200;
+                var defaultXml  = string.IsNullOrEmpty(f.DefaultValue) ? "" : $"<defaultvalue>{System.Security.SecurityElement.Escape(f.DefaultValue)}</defaultvalue>";
+                var caption     = string.IsNullOrEmpty(f.Caption) ? f.Name : f.Caption;
+                var controlName = MapFormControl(f.FieldType);
+                var dropdownOpts = f.FieldType?.ToLower() == "dropdown" ? (f.DataSource ?? "") : "";
 
-                //"media" => "Kentico.Administration.AssetSelector",
-                //"mediafiles" => "Kentico.Administration.AssetSelector",
-                "contentitemselector" => "Kentico.Administration.ContentItemSelector",
-                "combinedcontentselector" => "Kentico.Administration.ContentItemSelector",
-
-                "pageselector" => "Kentico.Administration.WebPageSelector",
-                "pages" => "Kentico.Administration.WebPageSelector",
-
-                _ => "Kentico.Administration.TextInput"
-            };
-        }
-
-        private string BuildDropdownOptions(string dataSource)
-        { 
-            if (string.IsNullOrWhiteSpace(dataSource))
-                return ""; 
-            //var normalized = dataSource.Replace("\r\n", "\n")
-            //                           .Replace("\r", "\n");
-            //var escaped = System.Security.SecurityElement.Escape(normalized);
-            return dataSource;
-        }
-
-        #endregion ContentType Migration
-
-        #region LocalString Migration
-
-        [HttpPost("local-string")]
-        public IActionResult ImportLocalString([FromBody] JsonElement body)
-        {
-            try
-            {
-                var options = new JsonSerializerOptions
+                if (field == null)
                 {
-                    PropertyNameCaseInsensitive = true
-                };
-
-                List<LocalStringImportDto> models;
-
-                if (body.ValueKind == JsonValueKind.Array)
-                {
-                    models = JsonSerializer.Deserialize<List<LocalStringImportDto>>(body.GetRawText(), options)
-                             ?? new List<LocalStringImportDto>();
-                }
-                else if (body.ValueKind == JsonValueKind.Object)
-                {
-                    var single = JsonSerializer.Deserialize<LocalStringImportDto>(body.GetRawText(), options);
-
-                    models = single == null
-                        ? new List<LocalStringImportDto>()
-                        : new List<LocalStringImportDto> { single };
+                    formXml = formXml.Replace("</form>", $@"<field column=""{f.Name}"" columntype=""{MapToKenticoType(f.DataType, f.FieldType)}"" columnsize=""{size}"" allowempty=""{allowEmpty}"" visible=""true"" enabled=""true"">
+                        <properties><fieldcaption>{caption}</fieldcaption>{defaultXml}</properties>
+                        <settings><controlname>{controlName}</controlname><Options>{dropdownOpts}</Options><OptionsValueSeparator>;</OptionsValueSeparator></settings>
+                    </field>" + "\n</form>");
                 }
                 else
                 {
-                    return BadRequest("Request body must be a JSON object or JSON array.");
+                    field.Caption    = caption;
+                    field.AllowEmpty = allowEmpty != "false";
+                    field.Size       = size;
+                    if (!string.IsNullOrEmpty(f.DefaultValue)) field.DefaultValue = f.DefaultValue;
+                    field.Settings["controlname"] = controlName;
+                    if (f.FieldType?.ToLower() == "dropdown") { field.Settings["Options"] = dropdownOpts; field.Settings["OptionsValueSeparator"] = ";"; }
+                    formXmlChanged = true;
+                    msg = "ContentType updated";
                 }
-
-                if (!models.Any())
-                {
-                    return BadRequest("No local strings found in request body.");
-                }
-
-                var result = localStringMigrationService.ImportMany(models);
-
-                return Ok(result);
             }
-            catch (Exception ex)
+
+            contentType.ClassFormDefinition = formXmlChanged ? formDefinition.GetXmlDefinition() : formXml;
+            DataClassInfoProvider.SetDataClassInfo(contentType);
+
+            var classInfo  = DataClassInfoProvider.GetDataClassInfo(model.CodeName);
+            formDefinition = new FormInfo(classInfo.ClassFormDefinition);
+
+            foreach (var f in model.Fields)
             {
-                return BadRequest(ex.Message);
+                if (f.FieldType?.ToLower() == "contentitemselector")
+                {
+                    var fd = formDefinition.GetFormField(f.Name);
+                    if (fd != null)
+                    {
+                        var legacy = DataClassInfoProvider.GetDataClassInfo("Legacy.MediaFile");
+                        if (legacy != null) fd.Settings["AllowedContentItemTypeIdentifiers"] = $"[\"{legacy.ClassGUID}\"]";
+                    }
+                }
+                if (f.FieldType?.ToLower() == "pageselector")
+                {
+                    var fd = formDefinition.GetFormField(f.Name);
+                    if (fd != null) { fd.Settings["MinimumPages"] = (f.MinItems ?? 1).ToString(); fd.Settings["MaximumPages"] = (f.MaxItems ?? 1).ToString(); }
+                }
             }
-        }
 
-        #endregion LocalString Migration
+            classInfo.ClassFormDefinition = formDefinition.GetXmlDefinition();
+            DataClassInfoProvider.SetDataClassInfo(classInfo);
+
+            return Ok(new { message = msg, model.CodeName, fields = model.Fields.Count });
+        }
+        catch (Exception ex) { return BadRequest(ex.Message); }
     }
+
+    [HttpPost("local-string")]
+    public IActionResult ImportLocalString([FromBody] JsonElement body)
+    {
+        try
+        {
+            var opts   = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+            var models = body.ValueKind == JsonValueKind.Array
+                ? JsonSerializer.Deserialize<List<LocalStringImportDto>>(body.GetRawText(), opts) ?? new()
+                : body.ValueKind == JsonValueKind.Object
+                    ? new List<LocalStringImportDto> { JsonSerializer.Deserialize<LocalStringImportDto>(body.GetRawText(), opts)! }
+                    : null;
+
+            if (models == null) return BadRequest("Body must be a JSON object or array.");
+            if (!models.Any())  return BadRequest("No local strings found.");
+
+            return Ok(_localStringService.ImportMany(models));
+        }
+        catch (Exception ex) { return BadRequest(ex.Message); }
+    }
+
+    private static string MapToKenticoType(string type, string? fieldType = null) =>
+        (fieldType?.ToLower() == "pageselector" || type?.ToLower() == "page") ? "webpages" :
+        type?.ToLower() switch
+        {
+            "text" => "text", "longtext" => "richtext", "integer" => "integer",
+            "boolean" => "boolean", "guid" => "guid",
+            "contentitemreference" => "contentitemreference", _ => "text"
+        };
+
+    private static string MapFormControl(string? type) =>
+        type?.ToLower().Trim() switch
+        {
+            "textbox" => "Kentico.Administration.TextInput",
+            "textarea" => "Kentico.Administration.TextArea",
+            "richtext" => "Kentico.Administration.RichTextEditor",
+            "dropdown" => "Kentico.Administration.DropDownSelector",
+            "checkbox" => "Kentico.Administration.CheckBox",
+            "contentitemselector" or "combinedcontentselector" => "Kentico.Administration.ContentItemSelector",
+            "pageselector" or "pages" => "Kentico.Administration.WebPageSelector",
+            _ => "Kentico.Administration.TextInput"
+        };
 }

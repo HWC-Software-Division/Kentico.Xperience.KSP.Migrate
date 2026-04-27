@@ -363,3 +363,4 @@ MigrationBackup/
 FodyWeavers.xsd
 /Kentico.Xperience.KSP.Migrate/assets/contentitems
 /.gitignore
+/KSP.Admin/Client/dist/

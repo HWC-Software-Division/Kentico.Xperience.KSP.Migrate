@@ -1,48 +1,41 @@
-﻿using Kentico.Web.Mvc;
-
-using Microsoft.AspNetCore.Builder;
-using Microsoft.Extensions.DependencyInjection;
+using Kentico.Web.Mvc;
 using Kentico.Xperience.KSP.Migrate.Services;
+using ILocalStringMigrationService = KSP.Core.Services.ILocalStringMigrationService;
+using LocalStringMigrationService = KSP.Core.Services.LocalStringMigrationService;
+
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Force load KSP.Admin assembly so XbyK scans its [assembly: RegisterModule] + [assembly: UIPage]
+_ = typeof(KSP.Admin.KSPAdminModule);
 
-// Enable desired Kentico Xperience features
 builder.Services.AddKentico(features =>
 {
     // features.UsePageBuilder();
-    // features.UseActivityTracking();
-    // features.UseWebPageRouting();
-    // features.UseEmailStatisticsLogging();
-    // features.UseEmailMarketing();
 });
 
 builder.Services.AddAuthentication();
 builder.Services.AddXperienceCommunityLocalization();
 
+// KSP.Core services
 builder.Services.AddScoped<ILocalStringMigrationService, LocalStringMigrationService>();
-// builder.Services.AddAuthorization();
 
-builder.Services.AddControllersWithViews();
+builder.Services.AddControllersWithViews()
+    .AddJsonOptions(o =>
+        o.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase);
 
 builder.Services.AddScoped<ContentTypeImportService>();
 builder.Services.AddScoped<ContentTypeExportService>();
 
 var app = builder.Build();
+
 app.InitKentico();
-
 app.UseStaticFiles();
-
 app.UseCookiePolicy();
-
 app.UseAuthentication();
-
-
 app.UseKentico();
-
-// app.UseAuthorization();
-
 app.Kentico().MapRoutes();
-app.MapGet("/", () => "The Kentico.Xperience.KSP.Migrate site has not been configured yet.");
+app.MapControllers();
+app.MapGet("/", () => "Kentico.Xperience.KSP.Migrate");
 
 app.Run();
