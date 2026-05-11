@@ -14,6 +14,8 @@ namespace Kentico.Xperience.KSP.Migrate.Models.API
 
         public List<string> AllowedChannels { get; set; } //ChannelName
 
+        /// <summary>"Website" | "Reusable"</summary>
+        public string ContentTypeType { get; set; } = "Website";
     }
 
     public class FieldDto
@@ -42,5 +44,14 @@ namespace Kentico.Xperience.KSP.Migrate.Models.API
         public string Operator { get; set; }
         public string Value { get; set; }
         public bool CaseSensitive { get; set; }
+    }
+
+    public class ReusableFieldSchemaDto
+    {
+        public string Name        { get; set; } = "";
+        public string DisplayName { get; set; } = "";
+        public string? Description { get; set; }
+        public string Guid        { get; set; } = "";
+        public List<FieldDto> Fields { get; set; } = new();
     }
 }

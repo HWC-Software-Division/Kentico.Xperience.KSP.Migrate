@@ -36,9 +36,9 @@ namespace Kentico.Xperience.KSP.Migrate.Services
 
                     ClassContactOverwriteEnabled = false,
                     ClassCodeGenerationSettings = GenerateClassCodeGenerationSettings(model.CodeName),
-                    ClassHasUnmanagedDbSchema = false, 
+                    ClassHasUnmanagedDbSchema = false,
                     ClassType = "Content",
-                    ClassContentTypeType = "Website",
+                    ClassContentTypeType = string.IsNullOrEmpty(model.ContentTypeType) ? "Website" : model.ContentTypeType,
                     ClassShortName = GenerateClassShortName(model.CodeName)
                 };
 
@@ -257,6 +257,46 @@ namespace Kentico.Xperience.KSP.Migrate.Services
 
                 return ($"Error: {ex.Message}", model.CodeName, model.Fields?.Count ?? 0);
             } 
+        }
+
+        /// <summary>Converts a FieldDto to FormFieldInfo — used for Reusable Field Schema import.</summary>
+        public FormFieldInfo BuildFormFieldInfo(FieldDto f)
+        {
+            var caption  = string.IsNullOrEmpty(f.Caption) ? f.Name : f.Caption;
+            var size     = (f.Size.HasValue && f.Size > 0) ? f.Size.Value : 200;
+
+            var fi = new FormFieldInfo
+            {
+                Name       = f.Name,
+                DataType   = MapToKenticoType(f.DataType, f.FieldType),
+                Size       = size,
+                AllowEmpty = !f.IsRequired,
+                Visible    = f.Visible,
+                Caption    = caption,
+            };
+
+            if (!string.IsNullOrEmpty(f.DefaultValue))
+                fi.DefaultValue = f.DefaultValue;
+
+            fi.Settings["controlname"] = MapFormControl(f.FieldType, f.DataType);
+
+            if (f.FieldType?.ToLower() == "dropdown" && !string.IsNullOrEmpty(f.DataSource))
+                fi.Settings["Options"] = f.DataSource;
+
+            if (f.FieldType?.ToLower() == "contentitemselector" && f.AllowedContentTypes?.Any() == true)
+            {
+                var guids = f.AllowedContentTypes
+                    .Select(cn => DataClassInfoProvider.GetDataClassInfo(cn))
+                    .Where(ci => ci != null)
+                    .Select(ci => ci.ClassGUID.ToString())
+                    .ToList();
+                if (guids.Any())
+                    fi.Settings["AllowedContentItemTypeIdentifiers"] =
+                        System.Text.Json.JsonSerializer.Serialize(guids);
+            }
+
+            ApplyMinMaxSettings(fi, f);
+            return fi;
         }
 
         private string MapToKenticoType(string type, string fieldType)

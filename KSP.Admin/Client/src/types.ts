@@ -5,6 +5,24 @@ export interface ContentTypeField {
   allowedContentTypes: string[] | null; visible: boolean;
 }
 export interface ContentType { name: string; codeName: string; fields: ContentTypeField[]; }
+
+export interface FieldSchema {
+  name: string;
+  displayName: string;
+  description: string | null;
+  guid: string;
+  fieldCount: number;
+}
+
 export interface ApiResponse<T> { success: boolean; data?: T; error?: string; }
-export interface ImportResult { created: number; updated: number; errors: string[]; }
+
+export interface ImportResult {
+  created: number; updated: number; errors: string[];
+  createdNames: string[]; updatedNames: string[];
+  reusableCreated: number; reusableUpdated: number; reusableErrors: string[];
+  reusableCreatedNames: string[]; reusableUpdatedNames: string[];
+  schemaCreated: number; schemaUpdated: number; schemaErrors: string[];
+  schemaCreatedNames: string[]; schemaUpdatedNames: string[];
+}
+
 export interface BasePageProps { apiBaseUrl: string; }

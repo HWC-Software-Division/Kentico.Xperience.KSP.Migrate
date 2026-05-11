@@ -34,13 +34,13 @@ namespace Kentico.Xperience.KSP.Migrate.Services
 
                 var dto = new ContentTypeDto
                 {
-                    Name = c.ClassDisplayName,
-                    CodeName = c.ClassName,
-                    IconClass = c.ClassIconClass,
-                    WebPageHasUrl = c.ClassWebPageHasUrl,
-
-                    AllowedChannels = GetAllowedChannels(c.ClassID),
-                    Fields = new List<FieldDto>()
+                    Name             = c.ClassDisplayName,
+                    CodeName         = c.ClassName,
+                    IconClass        = c.ClassIconClass,
+                    WebPageHasUrl    = c.ClassWebPageHasUrl,
+                    ContentTypeType  = c.ClassContentTypeType ?? "Website",
+                    AllowedChannels  = GetAllowedChannels(c.ClassID),
+                    Fields           = new List<FieldDto>()
                 };
 
                 foreach (var f in form.GetFields(true, true))
@@ -70,6 +70,27 @@ namespace Kentico.Xperience.KSP.Migrate.Services
             }
 
             return result;
+        }
+
+        /// <summary>Maps a single FormFieldInfo to FieldDto — used for Reusable Field Schema export.</summary>
+        public FieldDto MapFieldToDto(FormFieldInfo f)
+        {
+            return new FieldDto
+            {
+                Name               = f.Name,
+                DataType           = f.DataType,
+                FieldType          = MapBack(f),
+                IsRequired         = !f.AllowEmpty,
+                DefaultValue       = f.DefaultValue,
+                Caption            = f.Caption,
+                Size               = f.Size,
+                AllowedContentTypes = GetAllowedTypes(f),
+                DataSource         = f.Settings["Options"]?.ToString(),
+                Visible            = f.Visible,
+                Visibility         = null,   // schemas don't carry visibility conditions
+                MinItems           = GetMinItems(f),
+                MaxItems           = GetMaxItems(f)
+            };
         }
 
         private string MapBack(FormFieldInfo f)
