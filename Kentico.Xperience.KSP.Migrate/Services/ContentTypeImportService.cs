@@ -17,9 +17,10 @@ namespace Kentico.Xperience.KSP.Migrate.Services
 {
     public class ContentTypeImportService
     {
-        public (string message, string codeName, int fieldCount) Import(ContentTypeDto model)
+        public (string message, string codeName, int fieldCount, List<string> warnings) Import(ContentTypeDto model)
         {
-            try 
+            var warnings = new List<string>();
+            try
             {
                 if (model == null)
                     throw new Exception("Model is null");
@@ -93,9 +94,9 @@ namespace Kentico.Xperience.KSP.Migrate.Services
                             {
                                 var classInfo = DataClassInfoProvider.GetDataClassInfo(codeName);
                                 if (classInfo != null)
-                                {
                                     guids.Add(classInfo.ClassGUID.ToString());
-                                }
+                                else
+                                    warnings.Add($"Field \"{f.Name}\": AllowedContentType \"{codeName}\" not found in target");
                             }
 
                             if (guids.Any())
@@ -181,9 +182,9 @@ namespace Kentico.Xperience.KSP.Migrate.Services
                                 {
                                     var classInfo = DataClassInfoProvider.GetDataClassInfo(codeName);
                                     if (classInfo != null)
-                                    {
                                         guids.Add(classInfo.ClassGUID.ToString());
-                                    }
+                                    else
+                                        warnings.Add($"Field \"{f.Name}\": AllowedContentType \"{codeName}\" not found in target");
                                 }
 
                                 if (guids.Any())
@@ -241,10 +242,11 @@ namespace Kentico.Xperience.KSP.Migrate.Services
                 contentType.ClassFormDefinition = finalXml;
                 DataClassInfoProvider.SetDataClassInfo(contentType);
 
-                //Update set Channel
-                SaveAllowedChannels(contentType.ClassID, model.AllowedChannels);
+                // #7 — only Website types have channel assignments
+                if (string.Equals(model.ContentTypeType, "Website", StringComparison.OrdinalIgnoreCase))
+                    SaveAllowedChannels(contentType.ClassID, model.AllowedChannels);
 
-                return (msg, model.CodeName, model.Fields.Count);
+                return (msg, model.CodeName, model.Fields.Count, warnings);
             }
             catch (Exception ex)
             { 
@@ -255,7 +257,7 @@ namespace Kentico.Xperience.KSP.Migrate.Services
 
                 LogEvent(source, eventCode, eventDescription, "E");
 
-                return ($"Error: {ex.Message}", model.CodeName, model.Fields?.Count ?? 0);
+                return ($"Error: {ex.Message}", model.CodeName, model.Fields?.Count ?? 0, warnings);
             } 
         }
 

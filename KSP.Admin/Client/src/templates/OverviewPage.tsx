@@ -85,7 +85,7 @@ export function OverviewPage(props: BasePageProps) {
     try {
       const [r1, r2, r3] = await Promise.all([
         fetch(`${props.apiBaseUrl}/list`),
-        fetch(`${props.apiBaseUrl}/list-reusable`),
+        fetch(`${props.apiBaseUrl}/list-reusable?includeLegacy=true`),
         fetch(`${props.apiBaseUrl}/list-field-schemas`),
       ]);
       const [j1, j2, j3]: [
@@ -135,7 +135,7 @@ export function OverviewPage(props: BasePageProps) {
           { label: "Total types",    value: loading ? "—" : String(items.length) },
           { label: "HXC namespace",  value: loading ? "—" : String(hxcCount) },
           { label: "KSP namespace",  value: loading ? "—" : String(kspCount) },
-          { label: "Reusable",       value: loading ? "—" : String(reusable.length) },
+          { label: "Reusable Field", value: loading ? "—" : String(reusable.length) },
           { label: "Field Schemas",  value: loading ? "—" : String(schemas.length) },
         ].map(s => (
           <div key={s.label} style={{ background: "#f6f6f4", borderRadius: 7, padding: "12px 14px" }}>

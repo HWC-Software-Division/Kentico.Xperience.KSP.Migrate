@@ -14,6 +14,8 @@ export interface FieldSchema {
   fieldCount: number;
 }
 
+export interface SchemaDep { name: string; displayName: string; }
+
 export interface ApiResponse<T> { success: boolean; data?: T; error?: string; }
 
 export interface ImportResult {
@@ -23,6 +25,7 @@ export interface ImportResult {
   reusableCreatedNames: string[]; reusableUpdatedNames: string[];
   schemaCreated: number; schemaUpdated: number; schemaErrors: string[];
   schemaCreatedNames: string[]; schemaUpdatedNames: string[];
+  warnings: string[];
 }
 
 export interface BasePageProps { apiBaseUrl: string; }

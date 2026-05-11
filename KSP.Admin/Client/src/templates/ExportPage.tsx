@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { BasePageProps, ContentType, FieldSchema, ApiResponse } from "../types";
+import { BasePageProps, ContentType, FieldSchema, SchemaDep, ApiResponse } from "../types";
 
 const getNs = (c: string) => c.split(".")[0] ?? "";
 
@@ -12,6 +12,7 @@ const STYLE = `
 `;
 
 interface DepItem { codeName: string; name: string; }
+interface DepsModalData { reusable: DepItem[]; schemas: SchemaDep[]; }
 
 export function ExportPage(props: BasePageProps) {
   const [items,           setItems]           = useState<ContentType[]>([]);
@@ -24,7 +25,7 @@ export function ExportPage(props: BasePageProps) {
   const [selectedReusable,setSelectedReusable]= useState<Set<string>>(new Set());
   const [selectedSchemas, setSelectedSchemas] = useState<Set<string>>(new Set());
   const [status,          setStatus]          = useState<"idle"|"loading"|"success"|"error">("idle");
-  const [depsModal,       setDepsModal]       = useState<DepItem[] | null>(null);
+  const [depsModal,       setDepsModal]       = useState<DepsModalData | null>(null);
 
   // ── load ──────────────────────────────────────────────────────────────────
   const load = useCallback(async () => {
@@ -32,7 +33,7 @@ export function ExportPage(props: BasePageProps) {
     try {
       const [r1, r2, r3] = await Promise.all([
         fetch(`${props.apiBaseUrl}/list`),
-        fetch(`${props.apiBaseUrl}/list-reusable`),
+        fetch(`${props.apiBaseUrl}/list-reusable?includeLegacy=true`),
         fetch(`${props.apiBaseUrl}/list-field-schemas`),
       ]);
       const [j1, j2, j3]: [
@@ -54,26 +55,36 @@ export function ExportPage(props: BasePageProps) {
 
   useEffect(() => { void load(); }, [load]);
 
-  // ── dependency check ──────────────────────────────────────────────────────
-  const checkDeps = useCallback(async (codeNames: string[], currentReusable: Set<string>) => {
+  // ── #3: check both reusable AND schema dependencies ───────────────────────
+  const checkDeps = useCallback(async (
+    codeNames: string[],
+    currentReusable: Set<string>,
+    currentSchemas: Set<string>
+  ) => {
     if (codeNames.length === 0) return;
     try {
-      const res = await fetch(`${props.apiBaseUrl}/reusable-deps`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(codeNames),
+      const body = JSON.stringify(codeNames);
+      const headers = { "Content-Type": "application/json" };
+
+      const [r1, r2] = await Promise.all([
+        fetch(`${props.apiBaseUrl}/reusable-deps`, { method: "POST", headers, body }),
+        fetch(`${props.apiBaseUrl}/schema-deps`,   { method: "POST", headers, body }),
+      ]);
+      const [j1, j2]: [ApiResponse<string[]>, ApiResponse<SchemaDep[]>] =
+        await Promise.all([r1.json(), r2.json()]);
+
+      const newReusable = (j1.data ?? []).filter(cn => !currentReusable.has(cn));
+      const newSchemas  = (j2.data ?? []).filter(s  => !currentSchemas.has(s.name));
+
+      if (newReusable.length === 0 && newSchemas.length === 0) return;
+
+      setDepsModal({
+        reusable: newReusable.map(cn => ({
+          codeName: cn,
+          name: reusableItems.find(r => r.codeName === cn)?.name ?? cn,
+        })),
+        schemas: newSchemas,
       });
-      const j: ApiResponse<string[]> = await res.json();
-      if (!j.success || !j.data || j.data.length === 0) return;
-
-      const newDeps = j.data.filter(cn => !currentReusable.has(cn));
-      if (newDeps.length === 0) return;
-
-      const depItems: DepItem[] = newDeps.map(cn => ({
-        codeName: cn,
-        name: reusableItems.find(r => r.codeName === cn)?.name ?? cn,
-      }));
-      setDepsModal(depItems);
     } catch {}
   }, [props.apiBaseUrl, reusableItems]);
 
@@ -86,18 +97,14 @@ export function ExportPage(props: BasePageProps) {
   const filteredSchemas  = schemaItems.filter(s =>
     s.displayName.toLowerCase().includes(q) || s.name.toLowerCase().includes(q));
 
-  const allCtSelected     = filtered.length > 0 && filtered.every(c => selected.has(c.codeName));
-  const allRfSelected     = filteredReusable.length > 0 && filteredReusable.every(c => selectedReusable.has(c.codeName));
-  const allSchSelected    = filteredSchemas.length > 0 && filteredSchemas.every(s => selectedSchemas.has(s.name));
+  const allCtSelected  = filtered.length > 0 && filtered.every(c => selected.has(c.codeName));
+  const allRfSelected  = filteredReusable.length > 0 && filteredReusable.every(c => selectedReusable.has(c.codeName));
+  const allSchSelected = filteredSchemas.length > 0 && filteredSchemas.every(s => selectedSchemas.has(s.name));
 
   const toggleOne = (codeName: string) => {
     const isAdding = !selected.has(codeName);
-    setSelected(prev => {
-      const s = new Set(prev);
-      isAdding ? s.add(codeName) : s.delete(codeName);
-      return s;
-    });
-    if (isAdding) void checkDeps([codeName], selectedReusable);
+    setSelected(prev => { const s = new Set(prev); isAdding ? s.add(codeName) : s.delete(codeName); return s; });
+    if (isAdding) void checkDeps([codeName], selectedReusable, selectedSchemas);
   };
 
   const toggleAll = () => {
@@ -108,44 +115,28 @@ export function ExportPage(props: BasePageProps) {
       adding ? filtered.forEach(c => s.add(c.codeName)) : filtered.forEach(c => s.delete(c.codeName));
       return s;
     });
-    if (adding && newOnes.length > 0) void checkDeps(newOnes, selectedReusable);
+    if (adding && newOnes.length > 0) void checkDeps(newOnes, selectedReusable, selectedSchemas);
   };
 
-  const toggleOneReusable = (codeName: string) => {
+  const toggleOneReusable = (codeName: string) =>
+    setSelectedReusable(prev => { const s = new Set(prev); s.has(codeName) ? s.delete(codeName) : s.add(codeName); return s; });
+
+  const toggleAllReusable = () =>
     setSelectedReusable(prev => {
       const s = new Set(prev);
-      s.has(codeName) ? s.delete(codeName) : s.add(codeName);
+      allRfSelected ? filteredReusable.forEach(c => s.delete(c.codeName)) : filteredReusable.forEach(c => s.add(c.codeName));
       return s;
     });
-  };
 
-  const toggleAllReusable = () => {
-    setSelectedReusable(prev => {
-      const s = new Set(prev);
-      allRfSelected
-        ? filteredReusable.forEach(c => s.delete(c.codeName))
-        : filteredReusable.forEach(c => s.add(c.codeName));
-      return s;
-    });
-  };
+  const toggleOneSchema = (name: string) =>
+    setSelectedSchemas(prev => { const s = new Set(prev); s.has(name) ? s.delete(name) : s.add(name); return s; });
 
-  const toggleOneSchema = (name: string) => {
+  const toggleAllSchemas = () =>
     setSelectedSchemas(prev => {
       const s = new Set(prev);
-      s.has(name) ? s.delete(name) : s.add(name);
+      allSchSelected ? filteredSchemas.forEach(sc => s.delete(sc.name)) : filteredSchemas.forEach(sc => s.add(sc.name));
       return s;
     });
-  };
-
-  const toggleAllSchemas = () => {
-    setSelectedSchemas(prev => {
-      const s = new Set(prev);
-      allSchSelected
-        ? filteredSchemas.forEach(sc => s.delete(sc.name))
-        : filteredSchemas.forEach(sc => s.add(sc.name));
-      return s;
-    });
-  };
 
   // ── export ────────────────────────────────────────────────────────────────
   const handleExport = async () => {
@@ -186,22 +177,49 @@ export function ExportPage(props: BasePageProps) {
     <div className="ksp-ct" style={{ padding: 24, fontFamily: "system-ui, sans-serif" }}>
       <style>{STYLE}</style>
 
-      {/* ── Dependency modal ── */}
+      {/* ── Combined dependency modal (#3) ── */}
       {depsModal && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
-          <div style={{ background: "#fff", borderRadius: 12, padding: 24, width: 440, maxWidth: "90vw", boxShadow: "0 8px 32px rgba(0,0,0,0.18)" }}>
-            <h3 style={{ margin: "0 0 6px", fontSize: 15, fontWeight: 600, color: "#1a1a1a" }}>Reusable Field Dependencies</h3>
+          <div style={{ background: "#fff", borderRadius: 12, padding: 24, width: 460, maxWidth: "90vw", maxHeight: "80vh", overflow: "auto", boxShadow: "0 8px 32px rgba(0,0,0,0.18)" }}>
+            <h3 style={{ margin: "0 0 6px", fontSize: 15, fontWeight: 600, color: "#1a1a1a" }}>Dependencies Detected</h3>
             <p style={{ margin: "0 0 14px", fontSize: 13, color: "#666" }}>
-              The selected content types reference these reusable fields. Include them in the export?
+              The selected content types reference the following. Include them in the export?
             </p>
-            <div style={{ background: "#f6f6f4", borderRadius: 7, padding: "10px 12px", marginBottom: 18 }}>
-              {depsModal.map(d => (
-                <div key={d.codeName} style={{ display: "flex", gap: 8, alignItems: "baseline", padding: "3px 0" }}>
-                  <span style={{ fontSize: 13, color: "#1a1a1a" }}>{d.name}</span>
-                  <span style={{ fontSize: 11, fontFamily: "monospace", color: "#888" }}>{d.codeName}</span>
+
+            {/* Reusable fields section */}
+            {depsModal.reusable.length > 0 && (
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: "#7c4f00", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>
+                  Reusable Fields ({depsModal.reusable.length})
                 </div>
-              ))}
-            </div>
+                <div style={{ background: "#fdf3e6", borderRadius: 7, padding: "10px 12px" }}>
+                  {depsModal.reusable.map(d => (
+                    <div key={d.codeName} style={{ display: "flex", gap: 8, alignItems: "baseline", padding: "2px 0" }}>
+                      <span style={{ fontSize: 13, color: "#1a1a1a" }}>{d.name}</span>
+                      <span style={{ fontSize: 11, fontFamily: "monospace", color: "#888" }}>{d.codeName}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Field schemas section */}
+            {depsModal.schemas.length > 0 && (
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: "#4f46e5", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>
+                  Field Schemas ({depsModal.schemas.length})
+                </div>
+                <div style={{ background: "#eeebff", borderRadius: 7, padding: "10px 12px" }}>
+                  {depsModal.schemas.map(s => (
+                    <div key={s.name} style={{ display: "flex", gap: 8, alignItems: "baseline", padding: "2px 0" }}>
+                      <span style={{ fontSize: 13, color: "#1a1a1a" }}>{s.displayName}</span>
+                      <span style={{ fontSize: 11, fontFamily: "monospace", color: "#888" }}>{s.name}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
               <button onClick={() => setDepsModal(null)}
                 style={{ ...btnBase, background: "#fff", border: "0.5px solid #bbb", color: "#1a1a1a" }}>
@@ -210,7 +228,12 @@ export function ExportPage(props: BasePageProps) {
               <button onClick={() => {
                 setSelectedReusable(prev => {
                   const s = new Set(prev);
-                  depsModal.forEach(d => s.add(d.codeName));
+                  depsModal.reusable.forEach(d => s.add(d.codeName));
+                  return s;
+                });
+                setSelectedSchemas(prev => {
+                  const s = new Set(prev);
+                  depsModal.schemas.forEach(d => s.add(d.name));
                   return s;
                 });
                 setDepsModal(null);
@@ -235,12 +258,10 @@ export function ExportPage(props: BasePageProps) {
         </button>
       </div>
 
-      {/* Status banners */}
       {status === "success" && <div style={{ padding: "11px 14px", marginBottom: 14, borderRadius: 7, background: "#eaf3de", border: "0.5px solid #c0dd97", color: "#3b6d11", fontSize: 13 }}>Export complete — .zip downloaded.</div>}
       {status === "error"   && <div style={{ padding: "11px 14px", marginBottom: 14, borderRadius: 7, background: "#fcebeb", border: "0.5px solid #f7c1c1", color: "#a32d2d", fontSize: 13 }}>Export failed. Check API connection.</div>}
       {error != null        && <div style={{ padding: "11px 14px", marginBottom: 14, borderRadius: 7, background: "#fcebeb", border: "0.5px solid #f7c1c1", color: "#a32d2d", fontSize: 13 }}>{error}</div>}
 
-      {/* Search */}
       <input type="text" placeholder="Filter by name…" value={search}
         onChange={e => setSearch(e.target.value)}
         style={{ width: "100%", marginBottom: 18, fontSize: 13, boxSizing: "border-box", padding: "7px 10px", borderRadius: 6, border: "0.5px solid #d0d0d0" }}
@@ -250,7 +271,7 @@ export function ExportPage(props: BasePageProps) {
         <div style={{ padding: 40, textAlign: "center", color: "#aaa", fontSize: 13 }}>Loading…</div>
       ) : (<>
 
-        {/* ── Content Types section ── */}
+        {/* ── Content Types ── */}
         <div style={{ marginBottom: 22 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
             <span style={{ fontSize: 13, fontWeight: 500, color: "#1a1a1a" }}>
@@ -266,9 +287,7 @@ export function ExportPage(props: BasePageProps) {
             <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
               <thead>
                 <tr style={{ background: "#fafafa", borderBottom: "0.5px solid #e0e0e0" }}>
-                  <th style={{ width: 36, padding: "8px 10px" }}>
-                    <input type="checkbox" checked={allCtSelected} onChange={toggleAll} style={{ accentColor: "#185fa5" }} />
-                  </th>
+                  <th style={{ width: 36, padding: "8px 10px" }}><input type="checkbox" checked={allCtSelected} onChange={toggleAll} style={{ accentColor: "#185fa5" }} /></th>
                   <th style={{ padding: "8px 12px", textAlign: "left", fontSize: 11, fontWeight: 500, color: "#888", width: "34%" }}>Name</th>
                   <th style={{ padding: "8px 12px", textAlign: "left", fontSize: 11, fontWeight: 500, color: "#888", width: "28%" }}>Code name</th>
                   <th style={{ padding: "8px 12px", textAlign: "left", fontSize: 11, fontWeight: 500, color: "#888", width: "18%" }}>Namespace</th>
@@ -292,15 +311,13 @@ export function ExportPage(props: BasePageProps) {
                     </tr>
                   );
                 })}
-                {filtered.length === 0 && (
-                  <tr><td colSpan={5} style={{ padding: 28, textAlign: "center", color: "#aaa", fontSize: 13 }}>No content types found</td></tr>
-                )}
+                {filtered.length === 0 && <tr><td colSpan={5} style={{ padding: 28, textAlign: "center", color: "#aaa", fontSize: 13 }}>No content types found</td></tr>}
               </tbody>
             </table>
           </div>
         </div>
 
-        {/* ── Reusable Fields section ── */}
+        {/* ── Reusable Fields ── */}
         <div style={{ marginBottom: 22 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
             <span style={{ fontSize: 13, fontWeight: 500, color: "#1a1a1a" }}>
@@ -316,9 +333,7 @@ export function ExportPage(props: BasePageProps) {
             <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
               <thead>
                 <tr style={{ background: "#fafafa", borderBottom: "0.5px solid #e0e0e0" }}>
-                  <th style={{ width: 36, padding: "8px 10px" }}>
-                    <input type="checkbox" checked={allRfSelected} onChange={toggleAllReusable} style={{ accentColor: "#7c4f00" }} />
-                  </th>
+                  <th style={{ width: 36, padding: "8px 10px" }}><input type="checkbox" checked={allRfSelected} onChange={toggleAllReusable} style={{ accentColor: "#7c4f00" }} /></th>
                   <th style={{ padding: "8px 12px", textAlign: "left", fontSize: 11, fontWeight: 500, color: "#888", width: "38%" }}>Name</th>
                   <th style={{ padding: "8px 12px", textAlign: "left", fontSize: 11, fontWeight: 500, color: "#888", width: "34%" }}>Code name</th>
                   <th style={{ padding: "8px 12px", textAlign: "right", fontSize: 11, fontWeight: 500, color: "#888", width: "22%" }}>Fields</th>
@@ -340,15 +355,13 @@ export function ExportPage(props: BasePageProps) {
                     </tr>
                   );
                 })}
-                {filteredReusable.length === 0 && (
-                  <tr><td colSpan={4} style={{ padding: 20, textAlign: "center", color: "#aaa", fontSize: 13 }}>No reusable fields found</td></tr>
-                )}
+                {filteredReusable.length === 0 && <tr><td colSpan={4} style={{ padding: 20, textAlign: "center", color: "#aaa", fontSize: 13 }}>No reusable fields found</td></tr>}
               </tbody>
             </table>
           </div>
         </div>
 
-        {/* ── Field Schemas section ── */}
+        {/* ── Field Schemas ── */}
         <div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
             <span style={{ fontSize: 13, fontWeight: 500, color: "#1a1a1a" }}>
@@ -364,9 +377,7 @@ export function ExportPage(props: BasePageProps) {
             <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
               <thead>
                 <tr style={{ background: "#fafafa", borderBottom: "0.5px solid #e0e0e0" }}>
-                  <th style={{ width: 36, padding: "8px 10px" }}>
-                    <input type="checkbox" checked={allSchSelected} onChange={toggleAllSchemas} style={{ accentColor: "#4f46e5" }} />
-                  </th>
+                  <th style={{ width: 36, padding: "8px 10px" }}><input type="checkbox" checked={allSchSelected} onChange={toggleAllSchemas} style={{ accentColor: "#4f46e5" }} /></th>
                   <th style={{ padding: "8px 12px", textAlign: "left", fontSize: 11, fontWeight: 500, color: "#888", width: "38%" }}>Display name</th>
                   <th style={{ padding: "8px 12px", textAlign: "left", fontSize: 11, fontWeight: 500, color: "#888", width: "34%" }}>Name</th>
                   <th style={{ padding: "8px 12px", textAlign: "right", fontSize: 11, fontWeight: 500, color: "#888", width: "22%" }}>Fields</th>
@@ -388,9 +399,7 @@ export function ExportPage(props: BasePageProps) {
                     </tr>
                   );
                 })}
-                {filteredSchemas.length === 0 && (
-                  <tr><td colSpan={4} style={{ padding: 20, textAlign: "center", color: "#aaa", fontSize: 13 }}>No field schemas found</td></tr>
-                )}
+                {filteredSchemas.length === 0 && <tr><td colSpan={4} style={{ padding: 20, textAlign: "center", color: "#aaa", fontSize: 13 }}>No field schemas found</td></tr>}
               </tbody>
             </table>
           </div>

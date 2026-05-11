@@ -121,6 +121,22 @@ function ResultModal({ result, onClose }: { result: ImportResult; onClose: () =>
           </div>
         )}
 
+        {/* ── Warnings ── */}
+        {result.warnings.length > 0 && (
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: "#92400e", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 10 }}>
+              Warnings ({result.warnings.length})
+            </div>
+            <div style={{ background: "#fffbeb", border: "0.5px solid #fde68a", borderRadius: 7, padding: "10px 12px" }}>
+              <ul style={{ margin: 0, padding: "0 0 0 16px" }}>
+                {result.warnings.map((w, i) => (
+                  <li key={i} style={{ fontSize: 12, color: "#92400e", padding: "2px 0", lineHeight: 1.5 }}>{w}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        )}
+
         <div style={{ display: "flex", justifyContent: "flex-end" }}>
           <button onClick={onClose}
             style={{ padding: "7px 20px", borderRadius: 6, fontSize: 13, fontWeight: 500, background: "#185fa5", color: "#fff", border: "0.5px solid #185fa5", cursor: "pointer" }}>
