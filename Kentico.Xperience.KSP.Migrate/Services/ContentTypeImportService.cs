@@ -206,6 +206,32 @@ namespace Kentico.Xperience.KSP.Migrate.Services
 
                 }
 
+                // Reorder fields to match DTO order (new fields get appended; this puts them in the right position)
+                {
+                    var dtoOrder = model.Fields.Select(f => f.Name).ToList();
+                    var allItems = formDefinition.ItemsList.ToList();
+                    var sysItems = allItems.OfType<FormFieldInfo>()
+                        .Where(f => f.System || f.PrimaryKey || f.Name == "ContentItemDataID")
+                        .Cast<IDataDefinitionItem>().ToList();
+                    var userFields = allItems.OfType<FormFieldInfo>()
+                        .Where(f => !f.System && !f.PrimaryKey && f.Name != "ContentItemDataID")
+                        .ToList();
+                    var orderedUser = dtoOrder
+                        .Select(n => userFields.FirstOrDefault(f => f.Name.Equals(n, StringComparison.OrdinalIgnoreCase)))
+                        .Where(f => f != null)
+                        .Cast<IDataDefinitionItem>()
+                        .ToList();
+                    // Include any user fields not present in the DTO at the end
+                    var dtoSet = new HashSet<string>(dtoOrder, StringComparer.OrdinalIgnoreCase);
+                    var extraItems = allItems.Where(i => !(i is FormFieldInfo fi2 &&
+                        (fi2.System || fi2.PrimaryKey || fi2.Name == "ContentItemDataID" || dtoSet.Contains(fi2.Name)))).ToList();
+
+                    formDefinition.ItemsList.Clear();
+                    foreach (var i in sysItems)  formDefinition.ItemsList.Add(i);
+                    foreach (var i in orderedUser) formDefinition.ItemsList.Add(i);
+                    foreach (var i in extraItems) formDefinition.ItemsList.Add(i);
+                }
+
                 // Second pass: apply visibility conditions after ALL fields are in the form
                 // (avoids ordering issues where the controlling field comes after the controlled one)
                 foreach (var f in model.Fields)
