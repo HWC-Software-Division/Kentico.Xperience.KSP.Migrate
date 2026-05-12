@@ -77,8 +77,10 @@ export function ExportPage(props: BasePageProps) {
   const [selected,        setSelected]        = useState<Set<string>>(new Set());
   const [selectedReusable,setSelectedReusable]= useState<Set<string>>(new Set());
   const [selectedSchemas, setSelectedSchemas] = useState<Set<string>>(new Set());
-  const [status,          setStatus]          = useState<"idle"|"loading"|"success"|"error">("idle");
-  const [depsModal,       setDepsModal]       = useState<DepsModalData | null>(null);
+  const [status,              setStatus]              = useState<"idle"|"loading"|"success"|"error">("idle");
+  const [depsModal,           setDepsModal]           = useState<DepsModalData | null>(null);
+  const [modalReusableChecked,setModalReusableChecked]= useState<Set<string>>(new Set());
+  const [modalSchemasChecked, setModalSchemasChecked] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
@@ -119,6 +121,9 @@ export function ExportPage(props: BasePageProps) {
         reusable: newReusable.map(cn => ({ codeName: cn, name: reusableItems.find(r => r.codeName === cn)?.name ?? cn })),
         schemas: newSchemas,
       });
+      // Pre-check all deps by default
+      setModalReusableChecked(new Set(newReusable));
+      setModalSchemasChecked(new Set(newSchemas.map(s => s.name)));
     } catch {}
   }, [props.apiBaseUrl, reusableItems]);
 
@@ -187,43 +192,69 @@ export function ExportPage(props: BasePageProps) {
       {/* ── Dependency modal ── */}
       {depsModal && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
-          <div style={{ background: "#fff", borderRadius: 12, padding: 24, width: 460, maxWidth: "90vw", maxHeight: "80vh", overflow: "auto", boxShadow: "0 8px 32px rgba(0,0,0,0.18)" }}>
+          <div style={{ background: "#fff", borderRadius: 12, padding: 24, width: 480, maxWidth: "90vw", maxHeight: "80vh", overflow: "auto", boxShadow: "0 8px 32px rgba(0,0,0,0.18)" }}>
             <h3 style={{ margin: "0 0 6px", fontSize: 16, fontWeight: 600, color: "#1a1a1a" }}>Dependencies Detected</h3>
-            <p style={{ margin: "0 0 16px", fontSize: 14, color: "#666" }}>The selected content types reference the following. Include them in the export?</p>
+            <p style={{ margin: "0 0 16px", fontSize: 14, color: "#666" }}>The selected content types use the following. Choose which to include in the export.</p>
+
             {depsModal.reusable.length > 0 && (
-              <div style={{ marginBottom: 12 }}>
-                <div style={{ fontSize: 11, fontWeight: 600, color: "#7c4f00", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>Reusable Fields ({depsModal.reusable.length})</div>
-                <div style={{ background: "#fdf3e6", borderRadius: 8, padding: "10px 14px" }}>
-                  {depsModal.reusable.map(d => (
-                    <div key={d.codeName} style={{ display: "flex", gap: 10, alignItems: "baseline", padding: "3px 0" }}>
-                      <span style={{ fontSize: 14, color: "#1a1a1a" }}>{d.name}</span>
-                      <span style={{ fontSize: 12, fontFamily: "monospace", color: "#999" }}>{d.codeName}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            {depsModal.schemas.length > 0 && (
               <div style={{ marginBottom: 16 }}>
-                <div style={{ fontSize: 11, fontWeight: 600, color: "#4f46e5", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>Field Schemas ({depsModal.schemas.length})</div>
-                <div style={{ background: "#eeebff", borderRadius: 8, padding: "10px 14px" }}>
-                  {depsModal.schemas.map(s => (
-                    <div key={s.name} style={{ display: "flex", gap: 10, alignItems: "baseline", padding: "3px 0" }}>
-                      <span style={{ fontSize: 14, color: "#1a1a1a" }}>{s.displayName}</span>
-                      <span style={{ fontSize: 12, fontFamily: "monospace", color: "#999" }}>{s.name}</span>
-                    </div>
-                  ))}
+                <div style={{ fontSize: 11, fontWeight: 600, color: "#7c4f00", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>
+                  Reusable Fields ({modalReusableChecked.size}/{depsModal.reusable.length} selected)
+                </div>
+                <div style={{ background: "#fdf8f2", border: "1px solid #f0dfc0", borderRadius: 8, overflow: "hidden" }}>
+                  {depsModal.reusable.map((d, i) => {
+                    const checked = modalReusableChecked.has(d.codeName);
+                    return (
+                      <label key={d.codeName} onClick={e => e.stopPropagation()}
+                        style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 14px", cursor: "pointer",
+                          borderBottom: i < depsModal.reusable.length - 1 ? "1px solid #f0dfc0" : "none",
+                          background: checked ? "#fdf3e6" : "#fdf8f2" }}>
+                        <input type="checkbox" checked={checked} style={{ accentColor: "#7c4f00", flexShrink: 0 }}
+                          onChange={() => setModalReusableChecked(prev => { const s = new Set(prev); s.has(d.codeName) ? s.delete(d.codeName) : s.add(d.codeName); return s; })} />
+                        <span style={{ fontSize: 14, fontWeight: 500, color: "#1a1a1a", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.name}</span>
+                        <span style={{ fontSize: 11, fontFamily: "monospace", color: "#999", flexShrink: 0 }}>{d.codeName}</span>
+                      </label>
+                    );
+                  })}
                 </div>
               </div>
             )}
+
+            {depsModal.schemas.length > 0 && (
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: "#4f46e5", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>
+                  Field Schemas ({modalSchemasChecked.size}/{depsModal.schemas.length} selected)
+                </div>
+                <div style={{ background: "#f5f4ff", border: "1px solid #d4d0f8", borderRadius: 8, overflow: "hidden" }}>
+                  {depsModal.schemas.map((s, i) => {
+                    const checked = modalSchemasChecked.has(s.name);
+                    return (
+                      <label key={s.name} onClick={e => e.stopPropagation()}
+                        style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 14px", cursor: "pointer",
+                          borderBottom: i < depsModal.schemas.length - 1 ? "1px solid #d4d0f8" : "none",
+                          background: checked ? "#eeebff" : "#f5f4ff" }}>
+                        <input type="checkbox" checked={checked} style={{ accentColor: "#4f46e5", flexShrink: 0 }}
+                          onChange={() => setModalSchemasChecked(prev => { const s2 = new Set(prev); s2.has(s.name) ? s2.delete(s.name) : s2.add(s.name); return s2; })} />
+                        <span style={{ fontSize: 14, fontWeight: 500, color: "#1a1a1a", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.displayName}</span>
+                        <span style={{ fontSize: 11, fontFamily: "monospace", color: "#999", flexShrink: 0 }}>{s.name}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-              <button onClick={() => setDepsModal(null)} style={{ padding: "8px 16px", borderRadius: 6, fontSize: 13, fontWeight: 500, cursor: "pointer", border: "1px solid #d8d8d8", background: "#fff", color: "#444" }}>Skip</button>
+              <button onClick={() => setDepsModal(null)}
+                style={{ padding: "8px 16px", borderRadius: 6, fontSize: 13, fontWeight: 500, cursor: "pointer", border: "1px solid #d8d8d8", background: "#fff", color: "#444" }}>
+                Skip all
+              </button>
               <button onClick={() => {
-                setSelectedReusable(prev => { const s = new Set(prev); depsModal.reusable.forEach(d => s.add(d.codeName)); return s; });
-                setSelectedSchemas(prev => { const s = new Set(prev); depsModal.schemas.forEach(d => s.add(d.name)); return s; });
+                setSelectedReusable(prev => { const s = new Set(prev); modalReusableChecked.forEach(cn => s.add(cn)); return s; });
+                setSelectedSchemas(prev => { const s = new Set(prev); modalSchemasChecked.forEach(n => s.add(n)); return s; });
                 setDepsModal(null);
               }} style={{ padding: "8px 16px", borderRadius: 6, fontSize: 13, fontWeight: 500, cursor: "pointer", background: "#185fa5", border: "1px solid #185fa5", color: "#fff" }}>
-                Auto-select & Close
+                Add selected ({modalReusableChecked.size + modalSchemasChecked.size})
               </button>
             </div>
           </div>

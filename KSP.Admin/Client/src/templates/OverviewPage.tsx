@@ -112,7 +112,7 @@ export function OverviewPage(props: BasePageProps) {
           { label: "Total types",   value: items.length,    ns: null  },
           { label: "HXC namespace", value: hxcCount,        ns: "HXC" },
           { label: "KSP namespace", value: kspCount,        ns: "KSP" },
-          { label: "Reusable",      value: reusable.length, ns: null  },
+          { label: "Reusable Fields", value: reusable.length, ns: null  },
           { label: "Field Schemas", value: schemas.length,  ns: null  },
         ] as { label: string; value: number; ns: string | null }[]).map(card => {
           const isActive = card.ns !== null && nsFilter === card.ns;
