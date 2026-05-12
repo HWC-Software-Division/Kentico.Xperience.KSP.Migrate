@@ -185,7 +185,22 @@ public class ContentTypeTransferController : ControllerBase
             using (var zip = new ZipArchive(ms, ZipArchiveMode.Create, leaveOpen: true))
             {
                 if (hasContent)
-                    WriteZipEntry(zip, "content-types.json", _exportService.Export(req!.CodeNames));
+                {
+                    // Build a GUID→codeName lookup so ReusableSchemas stores code names,
+                    // not GUIDs (GUIDs differ per environment and break cross-env import).
+                    var schemaByGuid = _schemaManager.GetAll()
+                        .ToDictionary(s => s.Guid.ToString(), s => s.Name, StringComparer.OrdinalIgnoreCase);
+
+                    var contentDtos = _exportService.Export(req!.CodeNames);
+                    foreach (var dto in contentDtos)
+                    {
+                        if (dto.ReusableSchemas != null)
+                            dto.ReusableSchemas = dto.ReusableSchemas
+                                .Select(g => schemaByGuid.TryGetValue(g, out var name) ? name : g)
+                                .ToList();
+                    }
+                    WriteZipEntry(zip, "content-types.json", contentDtos);
+                }
 
                 if (hasReusable)
                     WriteZipEntry(zip, "reusable-fields.json", _exportService.Export(req!.ReusableCodeNames));
@@ -194,15 +209,26 @@ public class ContentTypeTransferController : ControllerBase
                 {
                     var dtos = _schemaManager.GetAll()
                         .Where(s => req!.SchemaNames.Contains(s.Name))
-                        .Select(s => new ReusableFieldSchemaDto
+                        .Select(s =>
                         {
-                            Name        = s.Name,
-                            DisplayName = s.DisplayName,
-                            Description = s.Description,
-                            Guid        = s.Guid.ToString(),
-                            Fields      = _schemaManager.GetSchemaFields(s.Name)
-                                            .Select(f => _exportService.MapFieldToDto(f))
-                                            .ToList()
+                            var schemaFields = _schemaManager.GetSchemaFields(s.Name).ToList();
+
+                            // Build a temporary FormInfo from the schema fields so GetVisibility
+                            // can parse visibility conditions out of each field's XML data.
+                            var schemaForm = new FormInfo();
+                            foreach (var sf in schemaFields)
+                                schemaForm.AddFormItem(sf);
+
+                            return new ReusableFieldSchemaDto
+                            {
+                                Name        = s.Name,
+                                DisplayName = s.DisplayName,
+                                Description = s.Description,
+                                Guid        = s.Guid.ToString(),
+                                Fields      = schemaFields
+                                                .Select(f => _exportService.MapFieldToDto(f, schemaForm))
+                                                .ToList()
+                            };
                         })
                         .ToList();
                     WriteZipEntry(zip, "reusable-field-schemas.json", dtos);
@@ -302,6 +328,56 @@ public class ContentTypeTransferController : ControllerBase
             if (message == "Created")      { created++; createdNames.Add(dto.Name); }
             else if (message == "Updated") { updated++; updatedNames.Add(dto.Name); }
             else                           errors.Add($"{codeName}: {message}");
+
+            // Attach reusable field schema references to the content type's form definition
+            if ((message == "Created" || message == "Updated") && dto.ReusableSchemas?.Any() == true)
+            {
+                try
+                {
+                    var classInfo = DataClassInfoProvider.GetDataClassInfo(codeName);
+                    if (classInfo != null)
+                    {
+                        var formInfo = new FormInfo(classInfo.ClassFormDefinition);
+                        var changed  = false;
+
+                        foreach (var schemaRef in dto.ReusableSchemas)
+                        {
+                            // schemaRef may be a GUID (as stored in form XML) or a code name
+                            var schema = _schemaManager.GetAll().FirstOrDefault(s =>
+                                s.Name.Equals(schemaRef, StringComparison.OrdinalIgnoreCase) ||
+                                s.Guid.ToString().Equals(schemaRef, StringComparison.OrdinalIgnoreCase));
+
+                            if (schema == null)
+                            {
+                                warnings.Add($"[{codeName}] Reusable schema \"{schemaRef}\" not found in target — skipped.");
+                                continue;
+                            }
+
+                            // Skip if already attached (check by GUID, which is how Kentico stores it)
+                            var guidStr = schema.Guid.ToString();
+                            if (formInfo.GetFormSchema(guidStr) != null) continue;
+
+                            var schemaInfo = new FormSchemaInfo
+                            {
+                                Name = guidStr,   // Kentico stores GUID as the name in form XML
+                                Guid = schema.Guid
+                            };
+                            formInfo.AddFormItem(schemaInfo);
+                            changed = true;
+                        }
+
+                        if (changed)
+                        {
+                            classInfo.ClassFormDefinition = formInfo.GetXmlDefinition();
+                            DataClassInfoProvider.SetDataClassInfo(classInfo);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    warnings.Add($"[{codeName}] Failed to attach reusable schemas: {ex.Message}");
+                }
+            }
         }
 
         return (created, updated, errors, createdNames, updatedNames, warnings);
@@ -364,6 +440,32 @@ public class ContentTypeTransferController : ControllerBase
 
                     updated++;
                     updatedNames.Add(dto.DisplayName);
+                }
+
+                // Second pass: apply visibility conditions after ALL fields are in the schema.
+                // Build a temp FormInfo from the current schema fields, apply visibility via XML,
+                // then write each modified field back using UpdateField.
+                var fieldsWithVisibility = dto.Fields.Where(f => f.Visibility != null).ToList();
+                if (fieldsWithVisibility.Any())
+                {
+                    try
+                    {
+                        var schemaFields = _schemaManager.GetSchemaFields(dto.Name).ToList();
+                        var tempForm = new FormInfo();
+                        foreach (var sf in schemaFields) tempForm.AddFormItem(sf);
+
+                        foreach (var f in fieldsWithVisibility)
+                            tempForm = _importService.ApplyVisibility(tempForm, f.Name, f.Visibility);
+
+                        foreach (var f in fieldsWithVisibility)
+                        {
+                            var updatedField = tempForm.GetFormField(f.Name);
+                            if (updatedField != null)
+                                try { _schemaManager.UpdateField(dto.Name, f.Name, updatedField); }
+                                catch { }
+                        }
+                    }
+                    catch { }
                 }
             }
             catch (Exception ex)

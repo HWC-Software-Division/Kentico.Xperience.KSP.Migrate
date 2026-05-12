@@ -32,6 +32,11 @@ namespace Kentico.Xperience.KSP.Migrate.Services
             {
                 var form = new FormInfo(c.ClassFormDefinition);
 
+                var schemaRefs = form.ItemsList
+                    .OfType<FormSchemaInfo>()
+                    .Select(s => s.Name)
+                    .ToList();
+
                 var dto = new ContentTypeDto
                 {
                     Name             = c.ClassDisplayName,
@@ -40,6 +45,7 @@ namespace Kentico.Xperience.KSP.Migrate.Services
                     WebPageHasUrl    = c.ClassWebPageHasUrl,
                     ContentTypeType  = c.ClassContentTypeType ?? "Website",
                     AllowedChannels  = GetAllowedChannels(c.ClassID),
+                    ReusableSchemas  = schemaRefs.Any() ? schemaRefs : null,
                     Fields           = new List<FieldDto>()
                 };
 
@@ -73,7 +79,7 @@ namespace Kentico.Xperience.KSP.Migrate.Services
         }
 
         /// <summary>Maps a single FormFieldInfo to FieldDto — used for Reusable Field Schema export.</summary>
-        public FieldDto MapFieldToDto(FormFieldInfo f)
+        public FieldDto MapFieldToDto(FormFieldInfo f, FormInfo parentForm = null)
         {
             return new FieldDto
             {
@@ -87,7 +93,7 @@ namespace Kentico.Xperience.KSP.Migrate.Services
                 AllowedContentTypes = GetAllowedTypes(f),
                 DataSource         = f.Settings["Options"]?.ToString(),
                 Visible            = f.Visible,
-                Visibility         = null,   // schemas don't carry visibility conditions
+                Visibility         = parentForm != null ? GetVisibility(parentForm, f) : null,
                 MinItems           = GetMinItems(f),
                 MaxItems           = GetMaxItems(f)
             };

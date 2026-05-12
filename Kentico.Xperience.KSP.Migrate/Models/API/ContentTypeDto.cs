@@ -16,6 +16,9 @@ namespace Kentico.Xperience.KSP.Migrate.Models.API
 
         /// <summary>"Website" | "Reusable"</summary>
         public string ContentTypeType { get; set; } = "Website";
+
+        /// <summary>Names of reusable field schemas attached to this content type.</summary>
+        public List<string> ReusableSchemas { get; set; }
     }
 
     public class FieldDto

@@ -5,6 +5,8 @@ const STYLE = `
   .ksp-ct, .ksp-ct h2, .ksp-ct h3, .ksp-ct p, .ksp-ct td, .ksp-ct div { color: inherit !important; }
   .ksp-ct { color: #1a1a1a !important; }
   .ksp-ct .ksp-subtle { color: #666 !important; }
+  .ksp-ct details summary { list-style: none; }
+  .ksp-ct details summary::-webkit-details-marker { display: none; }
 `;
 
 function NameList({ names, emptyText }: { names: string[]; emptyText: string }) {
@@ -72,12 +74,7 @@ function ResultModal({ result, onClose }: { result: ImportResult; onClose: () =>
             created={result.created} updated={result.updated}
             createdNames={result.createdNames} updatedNames={result.updatedNames}
             errors={result.errors}
-            accent={{
-              label: "Content Types",
-              createdBg: "#eaf3de", createdColor: "#3b6d11",
-              updatedBg: "#e6f1fb", updatedColor: "#185fa5",
-              errorBg: "#fcebeb",  errorColor: "#a32d2d",
-            }}
+            accent={{ label: "Content Types", createdBg: "#eaf3de", createdColor: "#3b6d11", updatedBg: "#e6f1fb", updatedColor: "#185fa5", errorBg: "#fcebeb", errorColor: "#a32d2d" }}
           />
         </div>
 
@@ -91,12 +88,7 @@ function ResultModal({ result, onClose }: { result: ImportResult; onClose: () =>
               created={result.reusableCreated} updated={result.reusableUpdated}
               createdNames={result.reusableCreatedNames} updatedNames={result.reusableUpdatedNames}
               errors={result.reusableErrors}
-              accent={{
-                label: "Reusable Fields",
-                createdBg: "#fdf3e6", createdColor: "#7c4f00",
-                updatedBg: "#fdf3e6", updatedColor: "#7c4f00",
-                errorBg: "#fcebeb",  errorColor: "#a32d2d",
-              }}
+              accent={{ label: "Reusable Fields", createdBg: "#fdf3e6", createdColor: "#7c4f00", updatedBg: "#fdf3e6", updatedColor: "#7c4f00", errorBg: "#fcebeb", errorColor: "#a32d2d" }}
             />
           </div>
         )}
@@ -111,12 +103,7 @@ function ResultModal({ result, onClose }: { result: ImportResult; onClose: () =>
               created={result.schemaCreated} updated={result.schemaUpdated}
               createdNames={result.schemaCreatedNames} updatedNames={result.schemaUpdatedNames}
               errors={result.schemaErrors}
-              accent={{
-                label: "Field Schemas",
-                createdBg: "#eeebff", createdColor: "#4f46e5",
-                updatedBg: "#eeebff", updatedColor: "#4f46e5",
-                errorBg: "#fcebeb",  errorColor: "#a32d2d",
-              }}
+              accent={{ label: "Field Schemas", createdBg: "#eeebff", createdColor: "#4f46e5", updatedBg: "#eeebff", updatedColor: "#4f46e5", errorBg: "#fcebeb", errorColor: "#a32d2d" }}
             />
           </div>
         )}
@@ -148,12 +135,42 @@ function ResultModal({ result, onClose }: { result: ImportResult; onClose: () =>
   );
 }
 
+/* ── [P1] Confirmation modal ───────────────────────────────────────────────── */
+function ConfirmModal({ fileName, onConfirm, onCancel }: {
+  fileName: string; onConfirm: () => void; onCancel: () => void;
+}) {
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
+      <div style={{ background: "#fff", borderRadius: 12, padding: 24, width: 400, maxWidth: "90vw", boxShadow: "0 8px 32px rgba(0,0,0,0.18)" }}>
+        <h3 style={{ margin: "0 0 10px", fontSize: 15, fontWeight: 600, color: "#1a1a1a" }}>Confirm Import</h3>
+        <p style={{ margin: "0 0 6px", fontSize: 13, color: "#1a1a1a" }}>
+          <strong>{fileName}</strong> will be imported into this environment.
+        </p>
+        <p style={{ margin: "0 0 22px", fontSize: 13, color: "#666", lineHeight: 1.6 }}>
+          Content types with matching code names will be updated. New ones will be created. This cannot be undone.
+        </p>
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+          <button onClick={onCancel}
+            style={{ padding: "7px 16px", borderRadius: 6, fontSize: 13, border: "0.5px solid #bbb", background: "#fff", cursor: "pointer" }}>
+            Cancel
+          </button>
+          <button onClick={onConfirm}
+            style={{ padding: "7px 16px", borderRadius: 6, fontSize: 13, fontWeight: 500, background: "#185fa5", color: "#fff", border: "0.5px solid #185fa5", cursor: "pointer" }}>
+            Import
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ImportPage(props: BasePageProps) {
-  const [file,       setFile]       = useState<File | null>(null);
-  const [status,     setStatus]     = useState<"idle"|"loading"|"success"|"error">("idle");
-  const [result,     setResult]     = useState<ImportResult | null>(null);
-  const [showModal,  setShowModal]  = useState(false);
-  const [isDragOver, setIsDragOver] = useState(false);
+  const [file,        setFile]        = useState<File | null>(null);
+  const [status,      setStatus]      = useState<"idle"|"loading"|"success"|"error">("idle");
+  const [result,      setResult]      = useState<ImportResult | null>(null);
+  const [showModal,   setShowModal]   = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false); // [P1]
+  const [isDragOver,  setIsDragOver]  = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const handleFile = (f: File | null) => {
@@ -177,7 +194,7 @@ export function ImportPage(props: BasePageProps) {
   };
 
   const steps = [
-    "Reads .zip → extracts content-types.json, reusable-fields.json, reusable-field-schemas.json",
+    "Reads .zip — extracts content-types.json, reusable-fields.json, reusable-field-schemas.json",
     "Imports Field Schemas first (may be referenced by content types)",
     "Imports Reusable Fields second (dependencies of content types)",
     "Imports Content Types last (creates or updates DataClassInfo)",
@@ -192,6 +209,15 @@ export function ImportPage(props: BasePageProps) {
   return (
     <div className="ksp-ct" style={{ padding: 24, fontFamily: "system-ui, sans-serif" }}>
       <style>{STYLE}</style>
+
+      {/* [P1] Confirmation modal */}
+      {showConfirm && file && (
+        <ConfirmModal
+          fileName={file.name}
+          onConfirm={() => { setShowConfirm(false); void handleImport(); }}
+          onCancel={() => setShowConfirm(false)}
+        />
+      )}
 
       {showModal && result && (
         <ResultModal result={result} onClose={() => setShowModal(false)} />
@@ -227,16 +253,21 @@ export function ImportPage(props: BasePageProps) {
         )}
       </div>
 
-      {/* Import flow */}
-      <div style={{ background: "#fafafa", border: "0.5px solid #e0e0e0", borderRadius: 8, padding: "14px 16px", marginBottom: 18 }}>
-        <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 10, color: "#1a1a1a" }}>Import flow</div>
-        {steps.map((s, i) => (
-          <div key={i} style={{ display: "flex", gap: 9, alignItems: "flex-start", marginBottom: 6 }}>
-            <span style={{ flexShrink: 0, width: 18, height: 18, borderRadius: "50%", background: "#e6f1fb", color: "#185fa5", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 500 }}>{i + 1}</span>
-            <span style={{ fontSize: 12, color: "#666", lineHeight: 1.5 }}>{s}</span>
-          </div>
-        ))}
-      </div>
+      {/* [P2] Import flow — collapsible */}
+      <details style={{ background: "#fafafa", border: "0.5px solid #e0e0e0", borderRadius: 8, marginBottom: 18 }}>
+        <summary style={{ padding: "11px 16px", fontSize: 13, fontWeight: 500, color: "#1a1a1a", cursor: "pointer", userSelect: "none", display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontSize: 10, color: "#888" }}>▶</span>
+          How it works
+        </summary>
+        <div style={{ padding: "2px 16px 14px" }}>
+          {steps.map((s, i) => (
+            <div key={i} style={{ display: "flex", gap: 9, alignItems: "flex-start", marginTop: 8 }}>
+              <span style={{ flexShrink: 0, width: 18, height: 18, borderRadius: "50%", background: "#e6f1fb", color: "#185fa5", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 500 }}>{i + 1}</span>
+              <span style={{ fontSize: 12, color: "#666", lineHeight: 1.5 }}>{s}</span>
+            </div>
+          ))}
+        </div>
+      </details>
 
       {/* Status banners */}
       {status === "loading" && <div style={{ padding: "11px 14px", marginBottom: 14, borderRadius: 7, background: "#e6f1fb", border: "0.5px solid #b5d4f4", color: "#185fa5", fontSize: 13 }}>Processing…</div>}
@@ -257,7 +288,8 @@ export function ImportPage(props: BasePageProps) {
 
       {/* Buttons */}
       <div style={{ display: "flex", gap: 8 }}>
-        <button onClick={handleImport} disabled={!file || status === "loading"}
+        {/* [P1] Opens confirm modal instead of importing directly */}
+        <button onClick={() => setShowConfirm(true)} disabled={!file || status === "loading"}
           style={{ padding: "7px 16px", borderRadius: 6, fontSize: 13, fontWeight: 500, border: "0.5px solid #185fa5", background: "#185fa5", color: "#fff", cursor: !file ? "not-allowed" : "pointer", opacity: !file ? 0.45 : 1 }}>
           {status === "loading" ? "Importing…" : "Import"}
         </button>

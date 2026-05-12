@@ -107,8 +107,6 @@ namespace Kentico.Xperience.KSP.Migrate.Services
                         }
 
                         var visible = f.Visible;
-                        var visibilityXml = f.Visibility != null ? BuildVisibilityXml(f.Visibility) : "";
-
 
                         if (field == null)
                         {
@@ -147,10 +145,6 @@ namespace Kentico.Xperience.KSP.Migrate.Services
                             //ใช้ FormInfo API แทน string.Replace
                             formDefinition.AddFormItem(newField);
 
-                            // Apply visibility ด้วย
-                            if (f.Visibility != null)
-                                formDefinition = ApplyVisibility(formDefinition, f.Name, f.Visibility);
-                            
                             msg = "Created";
                         }
                         else
@@ -197,8 +191,6 @@ namespace Kentico.Xperience.KSP.Migrate.Services
                             ApplyMinMaxSettings(field, f);
 
                             msg = "Updated";
-
-                            formDefinition = ApplyVisibility(formDefinition, f.Name, f.Visibility);
                         }
                     }
                     catch (Exception exField)
@@ -212,6 +204,14 @@ namespace Kentico.Xperience.KSP.Migrate.Services
                         LogEvent(source, eventCode, eventDescription, "E"); 
                     }
 
+                }
+
+                // Second pass: apply visibility conditions after ALL fields are in the form
+                // (avoids ordering issues where the controlling field comes after the controlled one)
+                foreach (var f in model.Fields)
+                {
+                    if (f.Visibility != null)
+                        formDefinition = ApplyVisibility(formDefinition, f.Name, f.Visibility);
                 }
 
                 var userFieldsXml = formDefinition.GetXmlDefinition();
@@ -398,12 +398,9 @@ namespace Kentico.Xperience.KSP.Migrate.Services
                     </visibilityconditiondata>";
         }
 
-        private FormInfo ApplyVisibility(FormInfo formDefinition, string fieldName, VisibilityConditionDto visibility)
+        public FormInfo ApplyVisibility(FormInfo formDefinition, string fieldName, VisibilityConditionDto visibility)
         {
             if (visibility == null) return formDefinition;
-
-            var target = formDefinition.GetFormField(visibility.Field);
-            if (target == null) return formDefinition;
 
             var formXml = formDefinition.GetXmlDefinition();
 
