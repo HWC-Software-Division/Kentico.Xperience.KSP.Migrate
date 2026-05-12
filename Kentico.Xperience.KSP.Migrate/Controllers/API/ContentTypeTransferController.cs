@@ -275,7 +275,11 @@ public class ContentTypeTransferController : ControllerBase
     // ─── POST /import ─────────────────────────────────────────────────────────
     [HttpPost("import")]
     [Consumes("multipart/form-data")]
-    public IActionResult Import(IFormFile file)
+    public IActionResult Import(
+        IFormFile file,
+        [FromForm] List<string> selectedContentTypes  = null,
+        [FromForm] List<string> selectedReusableFields = null,
+        [FromForm] List<string> selectedSchemas        = null)
     {
         try
         {
@@ -313,6 +317,22 @@ public class ContentTypeTransferController : ControllerBase
                     schemaDtos = JsonSerializer.Deserialize<List<ReusableFieldSchemaDto>>(r.ReadToEnd(), DeserOpts) ?? new();
                 }
             }
+
+            // Filter to only selected items (if selections were provided)
+            if (selectedContentTypes?.Count > 0)
+                contentDtos = contentDtos
+                    .Where(d => selectedContentTypes.Contains(d.CodeName, StringComparer.OrdinalIgnoreCase))
+                    .ToList();
+
+            if (selectedReusableFields?.Count > 0)
+                reusableDtos = reusableDtos
+                    .Where(d => selectedReusableFields.Contains(d.CodeName, StringComparer.OrdinalIgnoreCase))
+                    .ToList();
+
+            if (selectedSchemas?.Count > 0)
+                schemaDtos = schemaDtos
+                    .Where(d => selectedSchemas.Contains(d.Name, StringComparer.OrdinalIgnoreCase))
+                    .ToList();
 
             if (contentDtos.Count == 0 && reusableDtos.Count == 0 && schemaDtos.Count == 0)
                 return Ok(new ApiResp<ImportResult>("No content found in zip file."));

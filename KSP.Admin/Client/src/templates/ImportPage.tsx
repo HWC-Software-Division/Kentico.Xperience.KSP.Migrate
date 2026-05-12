@@ -1,4 +1,5 @@
 import React, { useRef, useState } from "react";
+import JSZip from "jszip";
 import { ApiResponse, BasePageProps, ImportResult } from "../types";
 
 const STYLE = `
@@ -8,6 +9,22 @@ const STYLE = `
   .ksp-ct details summary { list-style: none; }
   .ksp-ct details summary::-webkit-details-marker { display: none; }
 `;
+
+// ── Types ──────────────────────────────────────────────────────────────────────
+
+interface PreviewItem {
+  codeName: string;
+  name: string;
+  fieldCount?: number;
+}
+
+interface ZipPreview {
+  contentTypes:   PreviewItem[];
+  reusableFields: PreviewItem[];
+  schemas:        PreviewItem[];
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────────
 
 function NameList({ names, emptyText }: { names: string[]; emptyText: string }) {
   if (names.length === 0)
@@ -49,6 +66,8 @@ function SectionGrid({ created, updated, createdNames, updatedNames, errors, acc
   );
 }
 
+// ── Result Modal ───────────────────────────────────────────────────────────────
+
 function ResultModal({ result, onClose }: { result: ImportResult; onClose: () => void }) {
   const total = result.created + result.updated
               + result.reusableCreated + result.reusableUpdated
@@ -65,7 +84,6 @@ function ResultModal({ result, onClose }: { result: ImportResult; onClose: () =>
           {total} item{total !== 1 ? "s" : ""} imported successfully.
         </p>
 
-        {/* ── Content Types ── */}
         <div style={{ marginBottom: 16 }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: "#185fa5", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 10 }}>
             Content Types
@@ -78,7 +96,6 @@ function ResultModal({ result, onClose }: { result: ImportResult; onClose: () =>
           />
         </div>
 
-        {/* ── Reusable Fields ── */}
         {hasReusable && (
           <div style={{ marginBottom: 16 }}>
             <div style={{ fontSize: 12, fontWeight: 600, color: "#7c4f00", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 10 }}>
@@ -93,7 +110,6 @@ function ResultModal({ result, onClose }: { result: ImportResult; onClose: () =>
           </div>
         )}
 
-        {/* ── Field Schemas ── */}
         {hasSchemas && (
           <div style={{ marginBottom: 16 }}>
             <div style={{ fontSize: 12, fontWeight: 600, color: "#4f46e5", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 10 }}>
@@ -108,7 +124,6 @@ function ResultModal({ result, onClose }: { result: ImportResult; onClose: () =>
           </div>
         )}
 
-        {/* ── Warnings ── */}
         {result.warnings.length > 0 && (
           <div style={{ marginBottom: 16 }}>
             <div style={{ fontSize: 12, fontWeight: 600, color: "#92400e", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 10 }}>
@@ -135,28 +150,176 @@ function ResultModal({ result, onClose }: { result: ImportResult; onClose: () =>
   );
 }
 
-/* ── [P1] Confirmation modal ───────────────────────────────────────────────── */
-function ConfirmModal({ fileName, onConfirm, onCancel }: {
-  fileName: string; onConfirm: () => void; onCancel: () => void;
+// ── Preview Section (checkboxes per item) ─────────────────────────────────────
+
+function PreviewSection<T extends { codeName: string; name: string; fieldCount?: number }>({
+  title, accent, items, checked, onToggle, onToggleAll,
+}: {
+  title: string;
+  accent: { header: string; bg: string; border: string; check: string };
+  items: T[];
+  checked: Set<string>;
+  onToggle: (codeName: string) => void;
+  onToggleAll: (all: boolean) => void;
 }) {
+  if (items.length === 0) return null;
+  const allChecked  = items.every(i => checked.has(i.codeName));
+  const someChecked = items.some(i => checked.has(i.codeName));
+
+  return (
+    <div style={{ marginBottom: 18 }}>
+      {/* Section header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <input
+            type="checkbox"
+            checked={allChecked}
+            ref={el => { if (el) el.indeterminate = someChecked && !allChecked; }}
+            onChange={e => onToggleAll(e.target.checked)}
+            style={{ accentColor: accent.check, width: 14, height: 14, cursor: "pointer" }}
+          />
+          <span style={{ fontSize: 12, fontWeight: 600, color: accent.header, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+            {title}
+          </span>
+        </div>
+        <span style={{ fontSize: 11, color: "#888" }}>
+          {checked.size > 0
+            ? `${items.filter(i => checked.has(i.codeName)).length}/${items.length} selected`
+            : `0/${items.length} selected`}
+        </span>
+      </div>
+
+      {/* Item list */}
+      <div style={{ background: accent.bg, border: `0.5px solid ${accent.border}`, borderRadius: 8, overflow: "hidden" }}>
+        {items.map((item, idx) => (
+          <label
+            key={item.codeName}
+            style={{
+              display: "flex", alignItems: "center", gap: 10, padding: "8px 12px",
+              cursor: "pointer", borderBottom: idx < items.length - 1 ? `0.5px solid ${accent.border}` : "none",
+              background: checked.has(item.codeName) ? "transparent" : "rgba(0,0,0,0.02)",
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={checked.has(item.codeName)}
+              onChange={() => onToggle(item.codeName)}
+              style={{ accentColor: accent.check, width: 14, height: 14, cursor: "pointer", flexShrink: 0 }}
+            />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 500, color: "#1a1a1a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                {item.name}
+              </div>
+              <div style={{ fontSize: 11, color: "#888", marginTop: 1 }}>
+                {item.codeName}
+                {item.fieldCount != null && ` · ${item.fieldCount} field${item.fieldCount !== 1 ? "s" : ""}`}
+              </div>
+            </div>
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Preview Modal ──────────────────────────────────────────────────────────────
+
+function PreviewModal({
+  preview,
+  onImport,
+  onCancel,
+}: {
+  preview: ZipPreview;
+  onImport: (selectedCT: string[], selectedRF: string[], selectedSchemas: string[]) => void;
+  onCancel: () => void;
+}) {
+  const [ctChecked,     setCtChecked]     = useState<Set<string>>(new Set(preview.contentTypes.map(i => i.codeName)));
+  const [rfChecked,     setRfChecked]     = useState<Set<string>>(new Set(preview.reusableFields.map(i => i.codeName)));
+  const [schemaChecked, setSchemaChecked] = useState<Set<string>>(new Set(preview.schemas.map(i => i.codeName)));
+
+  const toggle = (setter: React.Dispatch<React.SetStateAction<Set<string>>>, codeName: string) => {
+    setter(prev => {
+      const next = new Set(prev);
+      next.has(codeName) ? next.delete(codeName) : next.add(codeName);
+      return next;
+    });
+  };
+
+  const toggleAll = (
+    setter: React.Dispatch<React.SetStateAction<Set<string>>>,
+    items: PreviewItem[],
+    all: boolean,
+  ) => {
+    setter(all ? new Set(items.map(i => i.codeName)) : new Set());
+  };
+
+  const totalSelected = ctChecked.size + rfChecked.size + schemaChecked.size;
+
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
-      <div style={{ background: "#fff", borderRadius: 12, padding: 24, width: 400, maxWidth: "90vw", boxShadow: "0 8px 32px rgba(0,0,0,0.18)" }}>
-        <h3 style={{ margin: "0 0 10px", fontSize: 15, fontWeight: 600, color: "#1a1a1a" }}>Confirm Import</h3>
-        <p style={{ margin: "0 0 6px", fontSize: 13, color: "#1a1a1a" }}>
-          <strong>{fileName}</strong> will be imported into this environment.
+      <div style={{ background: "#fff", borderRadius: 12, padding: 24, width: 520, maxWidth: "92vw", maxHeight: "85vh", overflow: "auto", boxShadow: "0 8px 32px rgba(0,0,0,0.18)" }}>
+
+        {/* Header */}
+        <h3 style={{ margin: "0 0 4px", fontSize: 15, fontWeight: 600, color: "#1a1a1a" }}>Select items to import</h3>
+        <p style={{ margin: "0 0 20px", fontSize: 13, color: "#666" }}>
+          Choose which items to import. Existing items with the same code name will be updated.
         </p>
-        <p style={{ margin: "0 0 22px", fontSize: 13, color: "#666", lineHeight: 1.6 }}>
-          Content types with matching code names will be updated. New ones will be created. This cannot be undone.
-        </p>
-        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+
+        {/* Content Types */}
+        <PreviewSection
+          title="Content Types"
+          accent={{ header: "#185fa5", bg: "#f4f8fd", border: "#cde0f7", check: "#185fa5" }}
+          items={preview.contentTypes}
+          checked={ctChecked}
+          onToggle={n => toggle(setCtChecked, n)}
+          onToggleAll={all => toggleAll(setCtChecked, preview.contentTypes, all)}
+        />
+
+        {/* Reusable Fields */}
+        <PreviewSection
+          title="Reusable Fields"
+          accent={{ header: "#7c4f00", bg: "#fdf8f0", border: "#f0d9b0", check: "#c07000" }}
+          items={preview.reusableFields}
+          checked={rfChecked}
+          onToggle={n => toggle(setRfChecked, n)}
+          onToggleAll={all => toggleAll(setRfChecked, preview.reusableFields, all)}
+        />
+
+        {/* Field Schemas */}
+        <PreviewSection
+          title="Field Schemas"
+          accent={{ header: "#4f46e5", bg: "#f5f4ff", border: "#cec9f7", check: "#4f46e5" }}
+          items={preview.schemas}
+          checked={schemaChecked}
+          onToggle={n => toggle(setSchemaChecked, n)}
+          onToggleAll={all => toggleAll(setSchemaChecked, preview.schemas, all)}
+        />
+
+        {/* Empty state */}
+        {preview.contentTypes.length === 0 && preview.reusableFields.length === 0 && preview.schemas.length === 0 && (
+          <p style={{ color: "#aaa", fontSize: 13, textAlign: "center", margin: "20px 0" }}>No items found in this file.</p>
+        )}
+
+        {/* Footer */}
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", borderTop: "0.5px solid #eee", paddingTop: 16, marginTop: 4 }}>
           <button onClick={onCancel}
             style={{ padding: "7px 16px", borderRadius: 6, fontSize: 13, border: "0.5px solid #bbb", background: "#fff", cursor: "pointer" }}>
             Cancel
           </button>
-          <button onClick={onConfirm}
-            style={{ padding: "7px 16px", borderRadius: 6, fontSize: 13, fontWeight: 500, background: "#185fa5", color: "#fff", border: "0.5px solid #185fa5", cursor: "pointer" }}>
-            Import
+          <button
+            disabled={totalSelected === 0}
+            onClick={() => onImport(
+              [...ctChecked],
+              [...rfChecked],
+              [...schemaChecked],
+            )}
+            style={{
+              padding: "7px 16px", borderRadius: 6, fontSize: 13, fontWeight: 500,
+              background: totalSelected === 0 ? "#aaa" : "#185fa5",
+              color: "#fff", border: "none", cursor: totalSelected === 0 ? "not-allowed" : "pointer",
+            }}
+          >
+            Import selected ({totalSelected})
           </button>
         </div>
       </div>
@@ -164,33 +327,83 @@ function ConfirmModal({ fileName, onConfirm, onCancel }: {
   );
 }
 
+// ── Main Page ──────────────────────────────────────────────────────────────────
+
 export function ImportPage(props: BasePageProps) {
-  const [file,        setFile]        = useState<File | null>(null);
-  const [status,      setStatus]      = useState<"idle"|"loading"|"success"|"error">("idle");
-  const [result,      setResult]      = useState<ImportResult | null>(null);
-  const [showModal,   setShowModal]   = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false); // [P1]
-  const [isDragOver,  setIsDragOver]  = useState(false);
+  const [file,         setFile]         = useState<File | null>(null);
+  const [status,       setStatus]       = useState<"idle"|"loading"|"success"|"error">("idle");
+  const [result,       setResult]       = useState<ImportResult | null>(null);
+  const [showResult,   setShowResult]   = useState(false);
+  const [preview,      setPreview]      = useState<ZipPreview | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [isDragOver,   setIsDragOver]   = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // ── Read zip with JSZip ────────────────────────────────────────────────────
+  const readZip = async (f: File) => {
+    setPreviewError(null);
+    setPreview(null);
+    try {
+      const zip   = await JSZip.loadAsync(f);
+      const read  = async (name: string) => {
+        const entry = zip.file(name);
+        if (!entry) return [];
+        const text = await entry.async("string");
+        return JSON.parse(text) as any[];
+      };
+
+      const [ctRaw, rfRaw, schRaw] = await Promise.all([
+        read("content-types.json"),
+        read("reusable-fields.json"),
+        read("reusable-field-schemas.json"),
+      ]);
+
+      // JSON in zip is PascalCase (WriteZipEntry uses default JsonSerializerOptions)
+      setPreview({
+        contentTypes:   ctRaw.map(r => ({ codeName: r.CodeName ?? r.codeName, name: r.Name ?? r.name, fieldCount: (r.Fields ?? r.fields)?.length ?? 0 })),
+        reusableFields: rfRaw.map(r => ({ codeName: r.CodeName ?? r.codeName, name: r.Name ?? r.name, fieldCount: (r.Fields ?? r.fields)?.length ?? 0 })),
+        schemas:        schRaw.map(r => ({ codeName: r.Name ?? r.name,        name: r.DisplayName ?? r.displayName ?? r.Name ?? r.name })),
+      });
+    } catch {
+      setPreviewError("Cannot read this file. Make sure it was exported from this module.");
+    }
+  };
 
   const handleFile = (f: File | null) => {
     if (!f) return;
-    setFile(f); setStatus("idle"); setResult(null); setShowModal(false);
+    setFile(f);
+    setStatus("idle");
+    setResult(null);
+    setShowResult(false);
+    void readZip(f);
   };
 
-  const handleImport = async () => {
+  // ── Import ─────────────────────────────────────────────────────────────────
+  const handleImport = async (
+    selectedCT:      string[],
+    selectedRF:      string[],
+    selectedSchemas: string[],
+  ) => {
     if (!file || status === "loading") return;
+    setPreview(null);
     setStatus("loading");
+
     const form = new FormData();
     form.append("file", file);
+    selectedCT.forEach(n      => form.append("selectedContentTypes", n));
+    selectedRF.forEach(n      => form.append("selectedReusableFields", n));
+    selectedSchemas.forEach(n => form.append("selectedSchemas", n));
+
     try {
       const res  = await fetch(`${props.apiBaseUrl}/import`, { method: "POST", body: form });
       const json: ApiResponse<ImportResult> = await res.json();
       if (!json.success && !json.data) throw new Error(json.error ?? "Import failed");
       setResult(json.data ?? null);
       setStatus(json.success ? "success" : "error");
-      if (json.data) setShowModal(true);
-    } catch { setStatus("error"); }
+      if (json.data) setShowResult(true);
+    } catch {
+      setStatus("error");
+    }
   };
 
   const steps = [
@@ -210,17 +423,18 @@ export function ImportPage(props: BasePageProps) {
     <div className="ksp-ct" style={{ padding: 24, fontFamily: "system-ui, sans-serif" }}>
       <style>{STYLE}</style>
 
-      {/* [P1] Confirmation modal */}
-      {showConfirm && file && (
-        <ConfirmModal
-          fileName={file.name}
-          onConfirm={() => { setShowConfirm(false); void handleImport(); }}
-          onCancel={() => setShowConfirm(false)}
+      {/* Preview Modal */}
+      {preview && (
+        <PreviewModal
+          preview={preview}
+          onImport={handleImport}
+          onCancel={() => setPreview(null)}
         />
       )}
 
-      {showModal && result && (
-        <ResultModal result={result} onClose={() => setShowModal(false)} />
+      {/* Result Modal */}
+      {showResult && result && (
+        <ResultModal result={result} onClose={() => setShowResult(false)} />
       )}
 
       <div style={{ marginBottom: 18 }}>
@@ -253,7 +467,14 @@ export function ImportPage(props: BasePageProps) {
         )}
       </div>
 
-      {/* [P2] Import flow — collapsible */}
+      {/* Preview error */}
+      {previewError && (
+        <div style={{ padding: "10px 14px", marginBottom: 14, borderRadius: 7, background: "#fcebeb", border: "0.5px solid #f7c1c1", color: "#a32d2d", fontSize: 13 }}>
+          {previewError}
+        </div>
+      )}
+
+      {/* How it works */}
       <details style={{ background: "#fafafa", border: "0.5px solid #e0e0e0", borderRadius: 8, marginBottom: 18 }}>
         <summary style={{ padding: "11px 16px", fontSize: 13, fontWeight: 500, color: "#1a1a1a", cursor: "pointer", userSelect: "none", display: "flex", alignItems: "center", gap: 6 }}>
           <span style={{ fontSize: 10, color: "#888" }}>▶</span>
@@ -270,7 +491,11 @@ export function ImportPage(props: BasePageProps) {
       </details>
 
       {/* Status banners */}
-      {status === "loading" && <div style={{ padding: "11px 14px", marginBottom: 14, borderRadius: 7, background: "#e6f1fb", border: "0.5px solid #b5d4f4", color: "#185fa5", fontSize: 13 }}>Processing…</div>}
+      {status === "loading" && (
+        <div style={{ padding: "11px 14px", marginBottom: 14, borderRadius: 7, background: "#e6f1fb", border: "0.5px solid #b5d4f4", color: "#185fa5", fontSize: 13 }}>
+          Processing…
+        </div>
+      )}
       {status === "success" && result != null && (
         <div style={{ padding: "11px 14px", marginBottom: 14, borderRadius: 7, background: "#eaf3de", border: "0.5px solid #c0dd97", color: "#3b6d11", fontSize: 13, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <span>
@@ -278,29 +503,35 @@ export function ImportPage(props: BasePageProps) {
             {result.created + result.reusableCreated + result.schemaCreated} created,{" "}
             {result.updated + result.reusableUpdated + result.schemaUpdated} updated.
           </span>
-          <button onClick={() => setShowModal(true)}
+          <button onClick={() => setShowResult(true)}
             style={{ padding: "3px 10px", fontSize: 12, borderRadius: 5, border: "0.5px solid #3b6d11", background: "transparent", color: "#3b6d11", cursor: "pointer" }}>
             Details
           </button>
         </div>
       )}
-      {status === "error" && !result && <div style={{ padding: "11px 14px", marginBottom: 14, borderRadius: 7, background: "#fcebeb", border: "0.5px solid #f7c1c1", color: "#a32d2d", fontSize: 13 }}>Import failed. Check API connection.</div>}
+      {status === "error" && !result && (
+        <div style={{ padding: "11px 14px", marginBottom: 14, borderRadius: 7, background: "#fcebeb", border: "0.5px solid #f7c1c1", color: "#a32d2d", fontSize: 13 }}>
+          Import failed. Check API connection.
+        </div>
+      )}
 
       {/* Buttons */}
       <div style={{ display: "flex", gap: 8 }}>
-        {/* [P1] Opens confirm modal instead of importing directly */}
-        <button onClick={() => setShowConfirm(true)} disabled={!file || status === "loading"}
-          style={{ padding: "7px 16px", borderRadius: 6, fontSize: 13, fontWeight: 500, border: "0.5px solid #185fa5", background: "#185fa5", color: "#fff", cursor: !file ? "not-allowed" : "pointer", opacity: !file ? 0.45 : 1 }}>
+        <button
+          onClick={() => { if (preview === null && file) void readZip(file); }}
+          disabled={!file || status === "loading"}
+          style={{ padding: "7px 16px", borderRadius: 6, fontSize: 13, fontWeight: 500, border: "0.5px solid #185fa5", background: "#185fa5", color: "#fff", cursor: !file ? "not-allowed" : "pointer", opacity: !file ? 0.45 : 1 }}
+        >
           {status === "loading" ? "Importing…" : "Import"}
         </button>
         {file != null && (
-          <button onClick={() => { setFile(null); setStatus("idle"); setResult(null); setShowModal(false); }}
+          <button onClick={() => { setFile(null); setStatus("idle"); setResult(null); setShowResult(false); setPreview(null); setPreviewError(null); if (fileRef.current) fileRef.current.value = ""; }}
             style={{ padding: "7px 14px", borderRadius: 6, fontSize: 13, border: "0.5px solid #bbb", background: "#fff", cursor: "pointer" }}>
             Clear
           </button>
         )}
         {result != null && status === "success" && (
-          <button onClick={() => setShowModal(true)}
+          <button onClick={() => setShowResult(true)}
             style={{ padding: "7px 14px", borderRadius: 6, fontSize: 13, border: "0.5px solid #185fa5", background: "#fff", color: "#185fa5", cursor: "pointer" }}>
             View Results
           </button>
