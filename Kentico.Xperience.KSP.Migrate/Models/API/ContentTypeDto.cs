@@ -38,15 +38,12 @@ namespace Kentico.Xperience.KSP.Migrate.Models.API
 
         public List<string> AllowedContentTypes { get; set; }
         public bool Visible { get; set; }
-        public VisibilityConditionDto Visibility { get; set; }
-    }
 
-    public class VisibilityConditionDto
-    {
-        public string Field { get; set; }
-        public string Operator { get; set; }
-        public string Value { get; set; }
-        public bool CaseSensitive { get; set; }
+        /// <summary>
+        /// Raw &lt;visibilityconditiondata&gt;...&lt;/visibilityconditiondata&gt; XML,
+        /// preserved exactly as Kentico stores it so all condition types round-trip correctly.
+        /// </summary>
+        public string Visibility { get; set; }
     }
 
     public class ReusableFieldSchemaDto

@@ -101,25 +101,26 @@ namespace Kentico.Xperience.KSP.Migrate.Services
 
         private string MapBack(FormFieldInfo f)
         {
-            var control = f.Settings["controlname"]?.ToString();
+            var control  = f.Settings["controlname"]?.ToString();
             var dataType = f.DataType?.ToLower();
 
-            if (dataType == "datetime")
-                return "datetime";
-
-            if (dataType == "contentitemasset")
-                return "contentitemasset";
+            // Data-type shortcuts — some fields (especially in reusable schemas) may not
+            // have a controlname set, so we resolve from datatype first.
+            if (dataType == "datetime")        return "datetime";
+            if (dataType == "contentitemasset") return "contentitemasset";
+            if (dataType == "boolean")         return "checkbox";
 
             return control switch
             {
-                "Kentico.Administration.TextInput" => "textbox",
-                "Kentico.Administration.TextArea" => "textarea",
-                "Kentico.Administration.RichTextEditor" => "richtext",
-                "Kentico.Administration.DropDownSelector" => "dropdown",
+                "Kentico.Administration.TextInput"         => "textbox",
+                "Kentico.Administration.TextArea"          => "textarea",
+                "Kentico.Administration.RichTextEditor"    => "richtext",
+                "Kentico.Administration.DropDownSelector"  => "dropdown",
                 "Kentico.Administration.ContentItemSelector" => "contentitemselector",
-                "Kentico.Administration.WebPageSelector" => "pageselector",
-                "Kentico.Administration.CheckBox" => "checkbox",
-                "Kentico.Administration.NumberInput" => "number",
+                "Kentico.Administration.WebPageSelector"   => "pageselector",
+                "Kentico.Administration.CheckBox"          => "checkbox",  // legacy casing
+                "Kentico.Administration.Checkbox"          => "checkbox",  // correct casing
+                "Kentico.Administration.NumberInput"       => "number",
                 _ => "textbox"
             };
         }
@@ -147,25 +148,16 @@ namespace Kentico.Xperience.KSP.Migrate.Services
             return result;
         }
 
-        private VisibilityConditionDto GetVisibility(FormInfo form, FormFieldInfo f)
+        private string GetVisibility(FormInfo form, FormFieldInfo f)
         {
             var xml = form.GetXmlDefinition();
 
             var doc = new XmlDocument();
             doc.LoadXml(xml);
 
-            var node = doc.SelectSingleNode($"//field[@column='{f.Name}']/visibilityconditiondata/VisibilityConditionConfiguration");
+            var node = doc.SelectSingleNode($"//field[@column='{f.Name}']/visibilityconditiondata");
 
-            if (node == null)
-                return null;
-
-            return new VisibilityConditionDto
-            {
-                Field = node.SelectSingleNode("Properties/PropertyName")?.InnerText,
-                Value = node.SelectSingleNode("Properties/Value")?.InnerText,
-                CaseSensitive = node.SelectSingleNode("Properties/CaseSensitive")?.InnerText == "true",
-                Operator = node.SelectSingleNode("Identifier")?.InnerText
-            };
+            return node?.OuterXml;  // raw XML — null when no condition is set
         }
 
         private List<string> GetAllowedChannels(int classId)

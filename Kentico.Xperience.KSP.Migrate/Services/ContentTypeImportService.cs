@@ -265,7 +265,10 @@ namespace Kentico.Xperience.KSP.Migrate.Services
         public FormFieldInfo BuildFormFieldInfo(FieldDto f)
         {
             var caption  = string.IsNullOrEmpty(f.Caption) ? f.Name : f.Caption;
-            var size     = (f.Size.HasValue && f.Size > 0) ? f.Size.Value : 200;
+            // Preserve exported size exactly; only default to 200 when null.
+            // Boolean fields export size=0 — do NOT convert to 200 or Kentico
+            // may fail to bind the form component for the field.
+            var size     = f.Size ?? 200;
 
             var fi = new FormFieldInfo
             {
@@ -324,19 +327,20 @@ namespace Kentico.Xperience.KSP.Migrate.Services
             var t = type?.ToLower();
             var d = dataType?.ToLower();
              
-            if (d == "datetime")
-                return "Kentico.Administration.DateTimeInput";
-
-            if (d == "contentitemasset")
-                return "Kentico.Administration.AssetUploader";
+            if (d == "datetime")         return "Kentico.Administration.DateTimeInput";
+            if (d == "contentitemasset") return "Kentico.Administration.AssetUploader";
+            if (d == "boolean")          return "Kentico.Administration.Checkbox";
 
             return t?.ToLower() switch
             {
-                "textbox" => "Kentico.Administration.TextInput",
-                "textarea" => "Kentico.Administration.TextArea",
-                "dropdown" => "Kentico.Administration.DropDownSelector",
-                "contentitemselector" => "Kentico.Administration.ContentItemSelector",
-                "pageselector" => "Kentico.Administration.WebPageSelector",
+                "textbox"              => "Kentico.Administration.TextInput",
+                "textarea"             => "Kentico.Administration.TextArea",
+                "richtext"             => "Kentico.Administration.RichTextEditor",
+                "dropdown"             => "Kentico.Administration.DropDownSelector",
+                "checkbox"             => "Kentico.Administration.Checkbox",
+                "number"               => "Kentico.Administration.NumberInput",
+                "contentitemselector"  => "Kentico.Administration.ContentItemSelector",
+                "pageselector"         => "Kentico.Administration.WebPageSelector",
                 _ => "Kentico.Administration.TextInput"
             };
         }
@@ -381,51 +385,30 @@ namespace Kentico.Xperience.KSP.Migrate.Services
             return parts.Length > 0 ? parts[0] : string.Empty;
         }
 
-        private string BuildVisibilityXml(VisibilityConditionDto v)
+        /// <summary>
+        /// Injects raw &lt;visibilityconditiondata&gt; XML into the specified field,
+        /// replacing any existing visibility condition.
+        /// </summary>
+        public FormInfo ApplyVisibility(FormInfo formDefinition, string fieldName, string visibilityXml)
         {
-            if (v == null) return "";
-
-            return $@"
-                    <visibilityconditiondata>
-                      <VisibilityConditionConfiguration>
-                        <Identifier>{v.Operator}</Identifier>
-                        <Properties>
-                          <PropertyName>{v.Field}</PropertyName>
-                          <Value>{v.Value}</Value>
-                          <CaseSensitive>{v.CaseSensitive.ToString().ToLower()}</CaseSensitive>
-                        </Properties>
-                      </VisibilityConditionConfiguration>
-                    </visibilityconditiondata>";
-        }
-
-        public FormInfo ApplyVisibility(FormInfo formDefinition, string fieldName, VisibilityConditionDto visibility)
-        {
-            if (visibility == null) return formDefinition;
+            if (string.IsNullOrEmpty(visibilityXml)) return formDefinition;
 
             var formXml = formDefinition.GetXmlDefinition();
-
             var doc = new XmlDocument();
             doc.LoadXml(formXml);
 
             var fieldNode = doc.SelectSingleNode($"//field[@column='{fieldName}']");
             if (fieldNode == null) return formDefinition;
 
+            // Remove existing visibility node if present
             var oldNode = fieldNode.SelectSingleNode("visibilityconditiondata");
-           
-            if (oldNode != null && oldNode.ParentNode != null)
-            {
-                oldNode.ParentNode.RemoveChild(oldNode);
-            }
+            if (oldNode != null)
+                fieldNode.RemoveChild(oldNode);
 
-            var xml = BuildVisibilityXml(visibility);
-
-            if (!string.IsNullOrEmpty(xml))
-            {
-                var fragment = doc.CreateDocumentFragment();
-                fragment.InnerXml = xml;
-
-                fieldNode.AppendChild(fragment);
-            }
+            // Inject the raw XML
+            var fragment = doc.CreateDocumentFragment();
+            fragment.InnerXml = visibilityXml;
+            fieldNode.AppendChild(fragment);
 
             return new FormInfo(doc.OuterXml);
         }

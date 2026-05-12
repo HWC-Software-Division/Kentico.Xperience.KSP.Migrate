@@ -57,6 +57,37 @@ public class ContentTypeTransferController : ControllerBase
         catch (Exception ex) { return Ok(new ApiResp<List<ContentTypeResponse>>(ex.Message)); }
     }
 
+    // ─── GET /debug-schema/{name} ────────────────────────────────────────────
+    [HttpGet("debug-schema/{name}")]
+    public IActionResult DebugSchema(string name)
+    {
+        var schema = _schemaManager.Get(name);
+        if (schema == null) return Ok(new { error = "Schema not found" });
+
+        var fields = _schemaManager.GetSchemaFields(name).Select(f =>
+        {
+            var allSettings = new Dictionary<string, string>();
+            foreach (var key in f.Settings.Keys)
+                allSettings[key.ToString()] = f.Settings[key]?.ToString();
+
+            var tempForm = new FormInfo();
+            tempForm.AddFormItem(f);
+            var rawXml = tempForm.GetXmlDefinition();
+
+            return new
+            {
+                f.Name,
+                f.DataType,
+                f.Size,
+                f.Visible,
+                Settings = allSettings,
+                RawXml   = rawXml
+            };
+        });
+
+        return Ok(new { schema = new { schema.Name, schema.DisplayName, schema.Guid }, fields });
+    }
+
     // ─── GET /list-reusable ───────────────────────────────────────────────────
     // #5: filter out Legacy.* by default (migration artifacts); pass ?includeLegacy=true to see all
     [HttpGet("list-reusable")]
@@ -421,13 +452,18 @@ public class ContentTypeTransferController : ControllerBase
                     var dtoFieldNames    = dto.Fields.Select(f => f.Name)
                                             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-                    // Add new / update existing
+                    // Add new / update existing.
+                    // Delete + re-add instead of UpdateField to ensure all settings
+                    // (including controlname) are fully replaced, not partially merged.
                     foreach (var f in dto.Fields)
                         try
                         {
                             var fi = _importService.BuildFormFieldInfo(f);
                             if (currentFieldNames.Contains(f.Name))
-                                _schemaManager.UpdateField(dto.Name, f.Name, fi);
+                            {
+                                _schemaManager.DeleteField(dto.Name, f.Name);
+                                _schemaManager.AddField(dto.Name, fi);
+                            }
                             else
                                 _schemaManager.AddField(dto.Name, fi);
                         }
